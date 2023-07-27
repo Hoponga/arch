@@ -144,7 +144,8 @@ void ins_decode() {
 
         }
         // rs = instr[25:21] 
-        uint32_t rs = (instruction >> 12) & 0x1f; 
+        uint32_t rs = (instruction >> 21) & 0x1f; 
+        printf("\nRs %d \n", rs); 
         // rt = instr[20:16]
         uint32_t rt = (instruction >> 16) & 0x1f;  
 
