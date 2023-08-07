@@ -39,6 +39,7 @@
 // Top module for the MIPS processor core
 // NOT synthesizable Verilog!
 module testbench;
+  
 
    reg [31:0] i;
    reg [29:0] addr;
@@ -73,6 +74,8 @@ module testbench;
 
    initial
      begin
+      $dumpfile("wave.vcd");      // create a VCD waveform dump called "wave.vcd"
+    $dumpvars(0, testbench); // dump variable changes in the testbench
 	rst_b = 0;
 	#75;
 	rst_b <= 1;

@@ -137,6 +137,23 @@ assemble:
 	@echo -e "$mAssemblying input in $(OUTPUT)..."
 	spim447 -notrap -vasm $(INPUT) $(OUTPUT)/sim/mem;
 
+SRCDIR = src/
+INCLUDEDIR = $(SRCDIR)/include/
+src_files =  $(SRCDIR)/*.v \
+		   $(SRCDIR)/*.sv
+ioutput = outputs/mips
+
+############
+#### Icarus simulation
+#########
+
+isim: 
+	@echo "Compiling source files in $(SRCDIR)"; 
+	iverilog $(src_files) -I $(INCLUDEDIR) -o $(ioutput); 
+	@echo 
+	@echo "Wrote Icarus output to $(ioutput)"
+
+
 
 ###################################################################
 ### Simulate Verilog

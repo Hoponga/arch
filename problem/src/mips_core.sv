@@ -170,6 +170,8 @@ module mips_core(/*AUTOARG*/
  
    // synthesis translate_off
    initial begin
+    $dumpfile("corewave.vcd"); 
+    $dumpvars(0, mips_core); 
      // Delete this block when you are ready to try for real
      $display(""); 
      $display(""); 
