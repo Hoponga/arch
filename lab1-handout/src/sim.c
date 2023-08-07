@@ -24,6 +24,7 @@ struct {
     bool reg_write; 
     bool mem_to_reg; 
     bool mem_write; 
+    bool is_syscall; 
     
 
 } control_signals; 
@@ -75,6 +76,13 @@ void process_instruction()
     
     // 3 stage pipeline 
     ins_decode(); 
+    if (control_signals.is_syscall && NEXT_STATE.REGS[2] == 10) {
+        
+        printf("done\n"); 
+        RUN_BIT = 0; 
+
+    }
+
     execute(); 
     writeback(); 
 
@@ -88,10 +96,14 @@ void ins_decode() {
     // First, read opcode 
     int opcode1 = (instruction >> 29); // Get 3 MSB of instruction 
     int opcode2 = (instruction >> 26) & 0x7; 
-
+    control_signals.is_syscall = false; 
     if (opcode1 == OPCODE_SPECIAL) {
         // register instruction
         control_signals.is_reg = true; 
+        uint32_t funct = instruction & 0x6; 
+        if (funct == 0x6) {
+            control_signals.is_syscall = true; 
+        }
         // alu control must be chosen depending on funct field 
 
         
