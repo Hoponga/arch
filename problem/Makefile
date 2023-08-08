@@ -141,19 +141,24 @@ SRCDIR = src/
 INCLUDEDIR = $(SRCDIR)/include/
 src_files =  $(SRCDIR)/*.v \
 		   $(SRCDIR)/*.sv
-ioutput = outputs/mips
+ioutput = outputs/mips.out
 
 ############
 #### Icarus simulation
 #########
 
-isim: 
+ibuild: 
 	@echo "Compiling source files in $(SRCDIR)"; 
 	iverilog $(src_files) -I $(INCLUDEDIR) -o $(ioutput); 
 	@echo 
 	@echo "Wrote Icarus output to $(ioutput)"
 
-
+isim: 
+	@echo "Running $(ioutput)"; 
+	@echo 
+	vvp $(ioutput);
+	@echo 
+	@echo "Done";  
 
 ###################################################################
 ### Simulate Verilog

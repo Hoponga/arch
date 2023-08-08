@@ -151,6 +151,8 @@ module mips_core(/*AUTOARG*/
    wire			ctrl_RI;		// From Decoder of mips_decode.v
    wire			ctrl_Sys;		// From Decoder of mips_decode.v
    wire			ctrl_we;		// From Decoder of mips_decode.v
+   wire mem_to_reg;     // From Decoder of mips_decode.v 
+   
    // End of automatics
 
    // Generate control signals
@@ -160,6 +162,8 @@ module mips_core(/*AUTOARG*/
 		       .ctrl_Sys	(ctrl_Sys),
 		       .ctrl_RI		(ctrl_RI),
 		       .alu__sel	(alu__sel[3:0]),
+           .alu__src  (alu__src), 
+           .mem_to_reg(mem_to_reg),
 		       // Inputs
 		       .dcd_op		(dcd_op[5:0]),
 		       .dcd_funct2	(dcd_funct2[5:0]));
@@ -167,6 +171,23 @@ module mips_core(/*AUTOARG*/
    // Register File
    // Instantiate the register file from reg_file.v here.
    // Don't forget to hookup the "halted" signal to trigger the register dump 
+
+   
+   assign rd_data = (mem_to_reg) ? mem_data_out : alu__out; 
+
+   regfile RegisterFile(
+    .rs_num(dcd_rs), 
+    .rt_num(dcd_rt), 
+    .rd_num(dcd_rd), 
+    .rd_data(rd_data), 
+    .rd_we(ctrl_we), 
+    .clk(clk), 
+    .rst_b(rst_b),
+    .halted(halted)
+
+
+
+   ); 
  
    // synthesis translate_off
    initial begin

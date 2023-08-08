@@ -53,20 +53,59 @@
 ////
 module mips_decode(/*AUTOARG*/
    // Outputs
-   ctrl_we, ctrl_Sys, ctrl_RI, alu__sel,
+   ctrl_we, ctrl_Sys, ctrl_RI, alu__sel, alu__src, mem_to_reg 
    // Inputs
    dcd_op, dcd_funct2
    );
 
    input       [5:0] dcd_op, dcd_funct2;
-   output reg        ctrl_we, ctrl_Sys, ctrl_RI;
+   output reg        ctrl_we, ctrl_Sys, ctrl_RI, alu__src, mem_to_reg;
    output reg  [3:0] alu__sel;
+
+   wire        [2:0] op_major; 
+   wire        [2:0] op_minor; 
+   assign op_major = dcd_op[5:3]; 
+   assign op_minor = dcd_op[2:0]; 
+   
 
    always @(*) begin
      alu__sel = 4'hx;
      ctrl_we = 1'b0;
      ctrl_Sys = 1'b0;
      ctrl_RI = 1'b0;
+
+     case (op_major) 
+        `OP_ITYPE: 
+          begin 
+            alu__src = 1'b1; 
+            mem_to_reg = 1'b0; 
+            ctrl_we = 1'b1; 
+            
+
+            case(op_minor) 
+              1'h0: 
+                alu__sel = `ALU_ADD; 
+              1'h1: 
+                alu__sel = `ALU_ADDU; 
+              1'h2: 
+                alu__sel = `ALU_SUB; 
+              1'h3: 
+                alu__sel = `ALU_SUBU; 
+              1'h4: 
+                alu__sel = `ALU_AND; 
+              1'h5:
+                alu__sel = `ALU_OR; 
+              1'h6: 
+                alu__sel = `ALU_XOR; 
+              1'h7: 
+                alu__sel = `ALU_ADD; 
+            endcase 
+          end 
+          
+
+
+     endcase 
+
      case(dcd_op)
        `OP_OTHER0:
          case(dcd_funct2)
@@ -80,6 +119,17 @@ module mips_decode(/*AUTOARG*/
             alu__sel = `ALU_ADD;
             ctrl_we = 1'b1;
          end
+        `OP_ADDI: 
+          begin 
+            alu__sel = `ALU_ADD; 
+            ctrl_we = 1'b1; 
+
+          end 
+        `OP_SLTI: 
+        `OP_SLTIU: 
+        `OP_ANDI: 
+        `OP_ORI: 
+
        default:
          begin
             ctrl_RI = 1'b1;

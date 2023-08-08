@@ -71,6 +71,9 @@
 ////
 //// OPCODES
 ////
+`define OP_SPECIAL 3'h0
+`define OP_ITYPE 3'h1 
+
 
 // Main opcodes (op field)
 `define OP_OTHER0   6'h00
