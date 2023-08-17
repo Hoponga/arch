@@ -53,12 +53,13 @@
 ////
 module mips_decode(/*AUTOARG*/
    // Outputs
-   ctrl_we, ctrl_Sys, ctrl_RI, alu__sel, alu__src, mem_to_reg 
+   ctrl_we, ctrl_Sys, ctrl_RI, alu__sel, alu__src, mem_to_reg, ins_type,
    // Inputs
    dcd_op, dcd_funct2
    );
 
    input       [5:0] dcd_op, dcd_funct2;
+   output reg     [1:0] ins_type; 
    output reg        ctrl_we, ctrl_Sys, ctrl_RI, alu__src, mem_to_reg;
    output reg  [3:0] alu__sel;
 
@@ -73,10 +74,13 @@ module mips_decode(/*AUTOARG*/
      ctrl_we = 1'b0;
      ctrl_Sys = 1'b0;
      ctrl_RI = 1'b0;
+     ins_type = `R_TYPE; 
 
      case (op_major) 
         `OP_ITYPE: 
           begin 
+            ins_type = `I_TYPE; 
+
             alu__src = 1'b1; 
             mem_to_reg = 1'b0; 
             ctrl_we = 1'b1; 
@@ -125,10 +129,10 @@ module mips_decode(/*AUTOARG*/
             ctrl_we = 1'b1; 
 
           end 
-        `OP_SLTI: 
-        `OP_SLTIU: 
-        `OP_ANDI: 
-        `OP_ORI: 
+        //`OP_SLTI: 
+        //`OP_SLTIU: 
+        //`OP_ANDI: 
+        //`OP_ORI: 
 
        default:
          begin

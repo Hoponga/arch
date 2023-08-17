@@ -101,6 +101,9 @@ module mips_core(/*AUTOARG*/
    wire [25:0]   dcd_target;
    wire [19:0]   dcd_code;
    wire          dcd_bczft;
+   wire [1:0]    ins_type; 
+   wire [4:0]   regfile_write_addr; 
+   wire [31:0]   regfile_write_data; 
    
    // PC Management
    register #(32, text_start) PCReg(pc, nextpc, clk, ~internal_halt, rst_b);
@@ -137,6 +140,8 @@ module mips_core(/*AUTOARG*/
        $display ( "=== Simulation Cycle %d ===", $time );
        $display ( "[pc=%x, inst=%x] [op=%x, rs=%d, rt=%d, rd=%d, imm=%x, f2=%x] [reset=%d, halted=%d]",
                    pc, inst, dcd_op, dcd_rs, dcd_rt, dcd_rd, dcd_imm, dcd_funct2, ~rst_b, halted);
+       $display ("[ctrl_we=%d, rd_data = %d, alu_out = %d, dcd_se_imm = %d, rt_data = %d]", ctrl_we, rd_data, alu__out, dcd_se_imm, 
+                   rt_data); 
      end
    end
    // synthesis translate_on
@@ -164,6 +169,7 @@ module mips_core(/*AUTOARG*/
 		       .alu__sel	(alu__sel[3:0]),
            .alu__src  (alu__src), 
            .mem_to_reg(mem_to_reg),
+           .ins_type(ins_type),
 		       // Inputs
 		       .dcd_op		(dcd_op[5:0]),
 		       .dcd_funct2	(dcd_funct2[5:0]));
@@ -171,40 +177,42 @@ module mips_core(/*AUTOARG*/
    // Register File
    // Instantiate the register file from reg_file.v here.
    // Don't forget to hookup the "halted" signal to trigger the register dump 
-
+   assign regfile_write_addr = (ins_type == `I_TYPE) ? dcd_rt : dcd_rd; 
+   assign regfile_write_data = (mem_to_reg) ? mem_data_out : alu__out; 
    
-   assign rd_data = (mem_to_reg) ? mem_data_out : alu__out; 
 
    regfile RegisterFile(
     .rs_num(dcd_rs), 
     .rt_num(dcd_rt), 
-    .rd_num(dcd_rd), 
-    .rd_data(rd_data), 
+    .rd_num(regfile_write_addr), 
+    .rd_data(regfile_write_data), 
     .rd_we(ctrl_we), 
     .clk(clk), 
     .rst_b(rst_b),
-    .halted(halted)
+    .halted(halted), 
+    .rs_data(rs_data), 
+    .rt_data(rt_data)
 
 
 
    ); 
  
    // synthesis translate_off
-   initial begin
-    $dumpfile("corewave.vcd"); 
-    $dumpvars(0, mips_core); 
-     // Delete this block when you are ready to try for real
-     $display(""); 
-     $display(""); 
-     $display(""); 
-     $display(""); 
-     $display(">>>>> This works much better after you have hooked up the reg file. <<<<<");
-     $display(""); 
-     $display(""); 
-     $display(""); 
-     $display(""); 
-     $finish;
-   end
+   // initial begin
+   //  $dumpfile("corewave.vcd"); 
+   //  $dumpvars(0, mips_core); 
+   //   // Delete this block when you are ready to try for real
+   //   $display(""); 
+   //   $display(""); 
+   //   $display(""); 
+   //   $display(""); 
+   //   $display(">>>>> This works much better after you have hooked up the reg file. <<<<<");
+   //   $display(""); 
+   //   $display(""); 
+   //   $display(""); 
+   //   $display(""); 
+   //   $finish;
+   // end
    // synthesis translate_on
 
    // Execute
@@ -255,11 +263,30 @@ endmodule // mips_core
 ////
 module mips_ALU(alu__out, alu__op1, alu__op2, alu__sel);
 
-   output [31:0] alu__out;
+   output reg [31:0] alu__out;
    input [31:0]  alu__op1, alu__op2;
    input [3:0]   alu__sel;
+   always @(*) begin 
+      case (alu__sel)
+         `ALU_ADD: 
+            alu__out = alu__op1 + alu__op2; 
+         `ALU_ADDU: 
+            alu__out = alu__op1 + alu__op2; // right now, don't care about distinctions between unsigned and signed 
+         `ALU_SUB: 
+            alu__out = alu__op1 - alu__op2; 
+         `ALU_SUBU: 
+            alu__out = alu__op1 - alu__op2; 
+         `ALU_AND: 
+            alu__out = alu__op1 & alu__op2; 
+         `ALU_OR: 
+            alu__out = alu__op1 | alu__op2; 
+         `ALU_XOR: 
+            alu__out = alu__op1 ^ alu__op2; 
+         default: 
+            alu__out = alu__op1 + alu__op2; 
 
-   adder AdderUnit(alu__out, alu__op1, alu__op2, alu__sel[0]);
+      endcase 
+   end 
 
 endmodule
 
