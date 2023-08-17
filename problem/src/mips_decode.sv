@@ -105,7 +105,31 @@ module mips_decode(/*AUTOARG*/
                 alu__sel = `ALU_ADD; 
             endcase 
           end 
-          
+        `OP_RTYPE: 
+          begin 
+            alu__src = 1'b0; 
+            mem_to_reg = 1'b0; 
+            ctrl_we = 1'b1; 
+
+            
+            case (dcd_funct2) 
+            `OP0_ADD: 
+              alu__sel = `ALU_ADD; 
+            `OP0_AND: 
+              alu__sel = `ALU_AND; 
+            `OP0_NOR: 
+              alu__sel = `ALU_NOR; 
+            `OP0_XOR: 
+              alu__sel = `ALU_XOR; 
+            `OP0_OR: 
+              alu__sel = `ALU_OR; 
+            `OP0_SLT: 
+              alu__sel = `ALU_SLT; 
+            `OP0_SUB: 
+              alu__sel = `ALU_SUB; 
+
+            endcase 
+          end 
 
 
      endcase 

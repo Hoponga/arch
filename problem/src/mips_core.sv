@@ -102,8 +102,9 @@ module mips_core(/*AUTOARG*/
    wire [19:0]   dcd_code;
    wire          dcd_bczft;
    wire [1:0]    ins_type; 
-   wire [4:0]   regfile_write_addr; 
+   wire [4:0]    regfile_write_addr; 
    wire [31:0]   regfile_write_data; 
+   wire [31:0]   alu_input_2; 
    
    // PC Management
    register #(32, text_start) PCReg(pc, nextpc, clk, ~internal_halt, rst_b);
@@ -196,29 +197,12 @@ module mips_core(/*AUTOARG*/
 
 
    ); 
- 
-   // synthesis translate_off
-   // initial begin
-   //  $dumpfile("corewave.vcd"); 
-   //  $dumpvars(0, mips_core); 
-   //   // Delete this block when you are ready to try for real
-   //   $display(""); 
-   //   $display(""); 
-   //   $display(""); 
-   //   $display(""); 
-   //   $display(">>>>> This works much better after you have hooked up the reg file. <<<<<");
-   //   $display(""); 
-   //   $display(""); 
-   //   $display(""); 
-   //   $display(""); 
-   //   $finish;
-   // end
-   // synthesis translate_on
 
    // Execute
+   assign alu_input_2 = (alu__src) ? dcd_se_imm : rt_data; 
    mips_ALU ALU(.alu__out(alu__out), 
                 .alu__op1(rs_data),
-                .alu__op2(dcd_se_imm),
+                .alu__op2(alu_input_2),
                 .alu__sel(alu__sel));
  
    // Miscellaneous stuff (Exceptions, syscalls, and halt)

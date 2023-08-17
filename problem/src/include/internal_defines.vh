@@ -10,6 +10,8 @@
 `define ALU_AND      4'b0100 
 `define ALU_OR       4'b0101  
 `define ALU_XOR      4'b0110
+`define ALU_NOR      4'b0111
+`define ALU_SLT      4'b1000
 
 
 `define R_TYPE       2'b00

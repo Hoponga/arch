@@ -219,7 +219,7 @@ module mips_mem(addr1,data_in1,data_out1,we1,excpt1,allow_kernel1,kernel1,
 	  kdata_seg[i] = 32'hdeadbeef;
 	  
 	  // Grab initial memory values
-	  $readmemh("447inputs/addiu.x", text_seg);
+	  $readmemh("447inputs/addtest.x", text_seg);
 	//   $readmemh("mem.data.dat", data_seg);
 	//   $readmemh("mem.stack.dat", stack_seg);
 	//   $readmemh("mem.ktext.dat", ktext_seg);
