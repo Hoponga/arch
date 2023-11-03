@@ -123,13 +123,13 @@ module mips_mem(addr1,data_in1,data_out1,we1,excpt1,allow_kernel1,kernel1,
 
    input         rst_b;
    input         clk;
-   always @(posedge clk) begin
-     // useful for debugging, you will want to comment this out for long programs
-     if (rst_b) begin
-       $display ("[mem_addr2=%x, data_out_2 = %x, data_start_w = %x]", 
-                  addr2, data_out2, data_start_w); 
-     end
-   end
+//    always @(posedge clk) begin
+//      // useful for debugging, you will want to comment this out for long programs
+//      if (rst_b) begin
+//        $display ("[mem_addr2=%x, data_out_2 = %x, data_start_w = %x]", 
+//                   addr2, data_out2, data_start_w); 
+//      end
+//    end
 
    // Inputs and ouptuts: Port 1
    input [29:0]  addr1;         // Memory address
