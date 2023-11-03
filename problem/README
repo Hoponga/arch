@@ -17,3 +17,11 @@ Currently, the implemented instructions are:
 - SUBU 
 - XOR 
 - XORI 
+- SB 
+- SW 
+- SH 
+- LB 
+- LBU 
+- LH
+- LHU 
+- LW 

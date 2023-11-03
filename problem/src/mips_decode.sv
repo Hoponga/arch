@@ -177,41 +177,61 @@ module mips_decode(/*AUTOARG*/
             mem_to_reg = 1'b0; 
             ctrl_we = 1'b1; 
 
-            
-            case (dcd_funct2) 
-            `OP0_ADD: 
-              alu__sel = `ALU_ADD; 
-            `OP0_ADDU: 
-              alu__sel = `ALU_ADD; 
-            `OP0_AND: 
-              alu__sel = `ALU_AND; 
-            `OP0_NOR: 
-              alu__sel = `ALU_NOR; 
-            `OP0_XOR: 
-              alu__sel = `ALU_XOR; 
-            `OP0_OR: 
-              alu__sel = `ALU_OR; 
-            `OP0_SLT: 
-              alu__sel = `ALU_SLT; 
-            `OP0_SUB: 
-              alu__sel = `ALU_SUB; 
-            `OP0_SLT: 
-              alu__sel = `ALU_SLT; 
-            `OP0_SRL: 
-              begin
-                imm_sign = 1'b0; 
-                alu__sel = `ALU_SRL; 
-                is_shift = 1'b1; 
+            case (op_minor)
+              3'b0: 
+                begin 
+                  case (dcd_funct2) 
+              `OP0_ADD: 
+                alu__sel = `ALU_ADD; 
+              `OP0_ADDU: 
+                alu__sel = `ALU_ADD; 
+              `OP0_AND: 
+                alu__sel = `ALU_AND; 
+              `OP0_NOR: 
+                alu__sel = `ALU_NOR; 
+              `OP0_XOR: 
+                alu__sel = `ALU_XOR; 
+              `OP0_OR: 
+                alu__sel = `ALU_OR; 
+              `OP0_SLT: 
+                alu__sel = `ALU_SLT; 
+              `OP0_SUB: 
+                alu__sel = `ALU_SUB; 
+              `OP0_SLT: 
+                alu__sel = `ALU_SLT; 
+              `OP0_SRL: 
+                begin
+                  imm_sign = 1'b0; 
+                  alu__sel = `ALU_SRL; 
+                  is_shift = 1'b1; 
+                end
+              `OP0_SLL:
+                begin 
+                  imm_sign = 1'b0; 
+                  alu__sel = `ALU_SLL; 
+                  is_shift = 1'b1; 
+                end
+              `OP0_SRA: 
+                alu__sel = `ALU_SRA; 
+              endcase 
+              
               end
-            `OP0_SLL:
-              begin 
-                imm_sign = 1'b0; 
-                alu__sel = `ALU_SLL; 
-                is_shift = 1'b1; 
-              end
-            `OP0_SRA: 
-              alu__sel = `ALU_SRA; 
+              3'b10: 
+                // j instruction
+                begin 
+                  ins_type = `J_TYPE; 
+                  ctrl_we = 1'b0; 
+                end
+
+              3'b11: // jal instruction 
+                ins_type = `J_TYPE; 
+
+
+
             endcase 
+
+            
+            
           end 
 
 

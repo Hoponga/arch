@@ -84,7 +84,7 @@ module mips_core(/*AUTOARG*/
    
 
    // Internal signals
-   wire [31:0]   pc, nextpc, nextnextpc;
+   wire [31:0]   pc, nextpc, nextnextpc, jump_target;
    wire          exception_halt, syscall_halt, internal_halt;
    wire          load_epc, load_bva, load_bva_sel;
    wire [31:0]   rt_data, rs_data, rd_data, alu__out, r_v0;
@@ -111,7 +111,6 @@ module mips_core(/*AUTOARG*/
    register #(32, text_start) PCReg(pc, nextpc, clk, ~internal_halt, rst_b);
    register #(32, text_start+4) PCReg2(nextpc, nextnextpc, clk,
                                        ~internal_halt, rst_b);
-   add_const #(4) NextPCAdder(nextnextpc, nextpc);
    assign        inst_addr = pc[31:2];
 
    // Instruction decoding
@@ -187,8 +186,8 @@ module mips_core(/*AUTOARG*/
    // Register File
    // Instantiate the register file from reg_file.v here.
    // Don't forget to hookup the "halted" signal to trigger the register dump 
-   assign regfile_write_addr = (ins_type == `I_TYPE) ? dcd_rt : dcd_rd; 
-   assign regfile_write_data = (mem_to_reg) ? mem_data_out : alu__out; 
+   assign regfile_write_addr = (ins_type == `J_TYPE && ctrl_we) ? 'hffffffff : (ins_type == `I_TYPE) ? dcd_rt : dcd_rd; 
+   assign regfile_write_data = (ins_type == `J_TYPE && ctrl_we) ? (pc + 4) : (mem_to_reg) ? mem_data_out : alu__out; 
 
    
 
@@ -221,7 +220,13 @@ module mips_core(/*AUTOARG*/
 
    assign        mem_addr = (mem_to_reg) ? (alu__out[29:0] >> 2) : 0;
    assign        mem_data_in = rt_data;
-   
+
+
+
+   assign jumptarget = {pc[31:28], dcd_target, 2'b00}; 
+   assign nextnextpc = (ins_type == `J_TYPE) ? jump_target : nextpc + 4; 
+
+
  
 
    
