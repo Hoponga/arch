@@ -1,0 +1,42 @@
+Currently, the implemented instructions are: 
+- ADD 
+- ADDU 
+- ADDI 
+- ADDIU 
+- AND
+- ANDI 
+- SLT 
+- SLTI 
+- SLTIU 
+- SLTU 
+- SRA 
+- SRAV 
+- SRL 
+- SRLV 
+- SUB 
+- SUBU 
+- XOR 
+- XORI 
+- SB 
+- SW 
+- SH 
+- LB 
+- LBU 
+- LH
+- LHU 
+- LW 
+- J 
+- JAL
+- JALR
+- JR
+
+The current version of the MIPS processor is in the problem directory (aptly named). I created custom makefile targets to compile & simulate it with Icarus & Verilator: 
+
+To compile, run `make ibuild` and to simulate, run `make isim`
+
+At the start of simulation, the desired program hex data is loaded into the mips_mem.v memory module's text segment. To change what program to run, just change the input .x file in mips_mem.v (somewhere around line 230)
+
+The mips -> hex parser is still work in progress, so in the meantime I use this website to convert my code to hex: http://www.kurtm.net/archive/2004-Summer-cs61c-public_html/mipsasm/index.cgi
+
+
+
