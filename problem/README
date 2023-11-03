@@ -25,3 +25,5 @@ Currently, the implemented instructions are:
 - LH
 - LHU 
 - LW 
+- J 
+- JAL
