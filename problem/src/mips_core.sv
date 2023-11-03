@@ -81,9 +81,7 @@ module mips_core(/*AUTOARG*/
 
    // Forced interface signals -- required for synthesis to work OK.
    // This is probably not what you want!
-   assign        mem_addr = 0;
-   assign        mem_data_in = mem_data_out;
-   assign        mem_write_en = 4'b0;
+   
 
    // Internal signals
    wire [31:0]   pc, nextpc, nextnextpc;
@@ -100,11 +98,14 @@ module mips_core(/*AUTOARG*/
    wire [15:0]   dcd_offset, dcd_imm;
    wire [25:0]   dcd_target;
    wire [19:0]   dcd_code;
-   wire          dcd_bczft;
+   wire          dcd_bczft, imm_sign, is_shift;
    wire [1:0]    ins_type; 
    wire [4:0]    regfile_write_addr; 
    wire [31:0]   regfile_write_data; 
    wire [31:0]   alu_input_2; 
+   wire [31:0]   imm_extend; 
+   wire [31:0]   alu_input_1; 
+   wire [2:0]    mem_read_bytes, mem_write_bytes; // how many bytes to read from/write to memory -- don't care if not a load/store instruction 
    
    // PC Management
    register #(32, text_start) PCReg(pc, nextpc, clk, ~internal_halt, rst_b);
@@ -141,8 +142,10 @@ module mips_core(/*AUTOARG*/
        $display ( "=== Simulation Cycle %d ===", $time );
        $display ( "[pc=%x, inst=%x] [op=%x, rs=%d, rt=%d, rd=%d, imm=%x, f2=%x] [reset=%d, halted=%d]",
                    pc, inst, dcd_op, dcd_rs, dcd_rt, dcd_rd, dcd_imm, dcd_funct2, ~rst_b, halted);
-       $display ("[ctrl_we=%d, rd_data = %d, alu_out = %d, dcd_se_imm = %d, rt_data = %d]", ctrl_we, rd_data, alu__out, dcd_se_imm, 
-                   rt_data); 
+       $display ("[ctrl_we=%d, rd_data = %d, alu_out = %d, imm_extend = %d, rt_data = %d]", ctrl_we, rd_data, alu__out, imm_extend, 
+                   rt_data, mem_to_reg); 
+       $display ("[mem_to_reg = %d, mem_addr = %x, mem_data_in = %x, mem_data_out = %x, regfile_write_data = %x, mem_excpt = %d]", 
+                  mem_to_reg, mem_addr, mem_data_in, mem_data_out, regfile_write_data, mem_excpt); 
      end
    end
    // synthesis translate_on
@@ -171,6 +174,12 @@ module mips_core(/*AUTOARG*/
            .alu__src  (alu__src), 
            .mem_to_reg(mem_to_reg),
            .ins_type(ins_type),
+           .imm_sign(imm_sign),
+           .is_shift(is_shift),
+           .mem_read_bytes(mem_read_bytes),
+           .mem_write_en(mem_write_en), 
+           .mem_write_bytes(mem_write_bytes),
+
 		       // Inputs
 		       .dcd_op		(dcd_op[5:0]),
 		       .dcd_funct2	(dcd_funct2[5:0]));
@@ -180,6 +189,7 @@ module mips_core(/*AUTOARG*/
    // Don't forget to hookup the "halted" signal to trigger the register dump 
    assign regfile_write_addr = (ins_type == `I_TYPE) ? dcd_rt : dcd_rd; 
    assign regfile_write_data = (mem_to_reg) ? mem_data_out : alu__out; 
+
    
 
    regfile RegisterFile(
@@ -199,12 +209,22 @@ module mips_core(/*AUTOARG*/
    ); 
 
    // Execute
-   assign alu_input_2 = (alu__src) ? dcd_se_imm : rt_data; 
+   assign imm_extend = (is_shift) ? dcd_shamt : dcd_se_imm; 
+
+   assign alu_input_1 = (is_shift) ? dcd_shamt : rs_data; 
+
+   assign alu_input_2 =(mem_to_reg) ? dcd_se_mem_offset : (alu__src) ? imm_extend : rt_data; 
    mips_ALU ALU(.alu__out(alu__out), 
-                .alu__op1(rs_data),
+                .alu__op1(alu_input_1),
                 .alu__op2(alu_input_2),
                 .alu__sel(alu__sel));
+
+   assign        mem_addr = (mem_to_reg) ? (alu__out[29:0] >> 2) : 0;
+   assign        mem_data_in = rt_data;
+   
  
+
+   
    // Miscellaneous stuff (Exceptions, syscalls, and halt)
    exception_unit EU(.exception_halt(exception_halt), .pc(pc), .rst_b(rst_b),
                      .clk(clk), .load_ex_regs(load_ex_regs),
@@ -266,6 +286,12 @@ module mips_ALU(alu__out, alu__op1, alu__op2, alu__sel);
             alu__out = alu__op1 | alu__op2; 
          `ALU_XOR: 
             alu__out = alu__op1 ^ alu__op2; 
+         `ALU_SRL: 
+            alu__out = alu__op2 >> alu__op1; 
+         `ALU_SRA: 
+            alu__out = alu__op2 >>> alu__op1; 
+         `ALU_SLL: 
+            alu__out = alu__op2 << alu__op1; 
          default: 
             alu__out = alu__op1 + alu__op2; 
 

@@ -74,6 +74,8 @@
 `define OP_SPECIAL 3'h0
 `define OP_ITYPE 3'h1 
 `define OP_RTYPE 3'h0
+`define OP_LOAD 3'h4
+`define OP_STORE 3'h5
 
 
 // Main opcodes (op field)

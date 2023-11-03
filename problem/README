@@ -1,0 +1,19 @@
+Currently, the implemented instructions are: 
+- ADD 
+- ADDU 
+- ADDI 
+- ADDIU 
+- AND
+- ANDI 
+- SLT 
+- SLTI 
+- SLTIU 
+- SLTU 
+- SRA 
+- SRAV 
+- SRL 
+- SRLV 
+- SUB 
+- SUBU 
+- XOR 
+- XORI 

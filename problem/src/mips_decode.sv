@@ -53,15 +53,17 @@
 ////
 module mips_decode(/*AUTOARG*/
    // Outputs
-   ctrl_we, ctrl_Sys, ctrl_RI, alu__sel, alu__src, mem_to_reg, ins_type,
+   ctrl_we, ctrl_Sys, ctrl_RI, alu__sel, alu__src, mem_to_reg, ins_type, imm_sign, is_shift, mem_read_bytes, mem_write_bytes, mem_write_en,
    // Inputs
    dcd_op, dcd_funct2
    );
 
    input       [5:0] dcd_op, dcd_funct2;
    output reg     [1:0] ins_type; 
-   output reg        ctrl_we, ctrl_Sys, ctrl_RI, alu__src, mem_to_reg;
-   output reg  [3:0] alu__sel;
+   output reg        ctrl_we, ctrl_Sys, ctrl_RI, alu__src, mem_to_reg, imm_sign, is_shift; 
+   output reg  [3:0] alu__sel, mem_write_en;
+   output reg [2:0] mem_read_bytes, mem_write_bytes; // could be 1, 2, or 4 depending on b, h, or w
+   
 
    wire        [2:0] op_major; 
    wire        [2:0] op_minor; 
@@ -75,6 +77,9 @@ module mips_decode(/*AUTOARG*/
      ctrl_Sys = 1'b0;
      ctrl_RI = 1'b0;
      ins_type = `R_TYPE; 
+     imm_sign = 1'b1; 
+     is_shift = 1'b0; 
+     mem_write_en = 1'b0; 
 
      case (op_major) 
         `OP_ITYPE: 
@@ -87,24 +92,85 @@ module mips_decode(/*AUTOARG*/
             
 
             case(op_minor) 
-              1'h0: 
+              'h0: 
                 alu__sel = `ALU_ADD; 
-              1'h1: 
+              'h1: 
                 alu__sel = `ALU_ADDU; 
-              1'h2: 
+              'h2: 
                 alu__sel = `ALU_SUB; 
-              1'h3: 
+              'h3: 
                 alu__sel = `ALU_SUBU; 
-              1'h4: 
+              'h4: 
                 alu__sel = `ALU_AND; 
-              1'h5:
+              'h5:
                 alu__sel = `ALU_OR; 
-              1'h6: 
+              'h6: 
                 alu__sel = `ALU_XOR; 
-              1'h7: 
+              'h7: 
                 alu__sel = `ALU_ADD; 
             endcase 
           end 
+        `OP_LOAD: 
+          begin 
+            ins_type = `I_TYPE; 
+            alu__src = 1'b1; 
+            mem_to_reg = 1'b1; 
+            ctrl_we = 1'b1; 
+            alu__sel = `ALU_ADD; 
+            imm_sign = 1'b1; 
+            mem_read_bytes = 1; 
+            case (dcd_op) 
+            `OP_LBU: 
+            begin
+              imm_sign = 1'b0; 
+              mem_read_bytes = 1; 
+            end
+            `OP_LHU: 
+            begin
+              imm_sign = 1'b0; 
+              mem_read_bytes = 2; 
+            end
+            `OP_LB: 
+              mem_read_bytes = 1; 
+            `OP_LH: 
+              mem_read_bytes = 2; 
+            `OP_LW: 
+              mem_read_bytes = 4; 
+            endcase 
+            
+
+
+          end 
+        `OP_STORE: 
+          begin 
+            ins_type = `I_TYPE; 
+            alu__src = 1'b1; 
+            mem_to_reg = 1'b1; // note -- we keep this on so that the datapath interprets the instruction as a memory access/write
+            // To prevent the register actually being written, just set reg_we = 0 as we do here -- cool trick :)  
+            ctrl_we = 1'b0; 
+            alu__sel = `ALU_ADD; 
+            imm_sign = 1'b1; 
+            mem_read_bytes = 1; 
+            mem_write_en = 1'b1; 
+            case (dcd_op) 
+            `OP_SB: 
+            begin
+              mem_read_bytes = 1; 
+              mem_write_en = 4'b1; 
+            end
+            `OP_SH: 
+            begin
+              mem_read_bytes = 2; 
+              mem_write_en = 4'b11; 
+            end
+            `OP_SW: 
+            begin
+              mem_read_bytes = 4; 
+              mem_write_en = 4'b1111; 
+            end
+            endcase 
+            
+          end
         `OP_RTYPE: 
           begin 
             alu__src = 1'b0; 
@@ -114,6 +180,8 @@ module mips_decode(/*AUTOARG*/
             
             case (dcd_funct2) 
             `OP0_ADD: 
+              alu__sel = `ALU_ADD; 
+            `OP0_ADDU: 
               alu__sel = `ALU_ADD; 
             `OP0_AND: 
               alu__sel = `ALU_AND; 
@@ -127,9 +195,25 @@ module mips_decode(/*AUTOARG*/
               alu__sel = `ALU_SLT; 
             `OP0_SUB: 
               alu__sel = `ALU_SUB; 
-
+            `OP0_SLT: 
+              alu__sel = `ALU_SLT; 
+            `OP0_SRL: 
+              begin
+                imm_sign = 1'b0; 
+                alu__sel = `ALU_SRL; 
+                is_shift = 1'b1; 
+              end
+            `OP0_SLL:
+              begin 
+                imm_sign = 1'b0; 
+                alu__sel = `ALU_SLL; 
+                is_shift = 1'b1; 
+              end
+            `OP0_SRA: 
+              alu__sel = `ALU_SRA; 
             endcase 
           end 
+
 
 
      endcase 
