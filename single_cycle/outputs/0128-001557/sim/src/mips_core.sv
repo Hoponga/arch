@@ -79,34 +79,19 @@ module mips_core(/*AUTOARG*/
    output        halted;
    input         rst_b;
 
-   // for now have every pipeline register be 128 bits long -- can always prune later 
-   wire [127:0] if_out, id_in, id_out, ex_in, ex_out, mem_in, mem_out, wb_in;  // bitstrings for the pipeline registers 
-   wire [127:0]   IFID;  // Pipeline register between instruction fetch & instruction decode 
-   wire [127:0]   IDEX;  // pipeline register between instruction decode & execute 
-   wire [127:0]   EXMEM; // pipeline register between execute & memory 
-   wire [127:0]   MEMWB; // pipeline register between memory access & writeback
-
-   
-
-   
-
-
-
    // Forced interface signals -- required for synthesis to work OK.
-   
    // This is probably not what you want!
-   
+   assign        mem_addr = 0;
+   assign        mem_data_in = mem_data_out;
+   assign        mem_write_en = 4'b0;
 
    // Internal signals
-   wire [31:0] nextpc, branch_pc; 
-   wire [31:0]   pc, nextnextpc, jump_target, branchtarget;
-   wire [2:0] pc_src; 
+   wire [31:0]   pc, nextpc, nextnextpc;
    wire          exception_halt, syscall_halt, internal_halt;
    wire          load_epc, load_bva, load_bva_sel;
    wire [31:0]   rt_data, rs_data, rd_data, alu__out, r_v0;
    wire [31:0]   epc, cause, bad_v_addr;
    wire [4:0]    cause_code;
-   wire [3:0]    alu_flags; 
 
    // Decode signals
    wire [31:0]   dcd_se_imm, dcd_se_offset, dcd_e_imm, dcd_se_mem_offset;
@@ -115,35 +100,13 @@ module mips_core(/*AUTOARG*/
    wire [15:0]   dcd_offset, dcd_imm;
    wire [25:0]   dcd_target;
    wire [19:0]   dcd_code;
-   wire          dcd_bczft, imm_sign, is_shift;
-   wire [1:0]    ins_type; 
-   wire [4:0]    regfile_write_addr; 
-   wire [31:0]   regfile_write_data; 
-   wire [31:0]   alu_input_2; 
-   wire [31:0]   imm_extend; 
-   wire [31:0]   alu_input_1; 
-   wire [2:0]    mem_read_bytes, mem_write_bytes; // how many bytes to read from/write to memory -- don't care if not a load/store instruction 
+   wire          dcd_bczft;
    
    // PC Management
    register #(32, text_start) PCReg(pc, nextpc, clk, ~internal_halt, rst_b);
-
-
-   // Pipeline registers 
-
-   assign if_out = {'0, inst}; 
-
-   // control signals should all go into instruction decode 
-   assign id_out = {'0, alu__src, mem_to_reg, mem_write_en, mem_read_bytes, imm_sign, ins_type, id_in[31:0]}; 
-   assign ex_out = ex_in; 
-   assign mem_out = mem_in; 
-
-   register #(128, 0) IFIDReg(id_in, if_out, clk, ~internal_halt, rst_b); 
-   register #(128, 0) IDEXReg(ex_in, id_out, clk, ~internal_halt, rst_b); 
-   register #(128, 0) EXMEMReg(mem_in, ex_out, clk, ~internal_halt, rst_b);       
-   register #(128, 0) MEMWBReg(wb_in, mem_out, clk, ~internal_halt, rst_b);  
-
-   // register #(32, text_start+4) PCReg2(nextpc, nextnextpc, clk,
-   //                                     ~internal_halt, rst_b);
+   register #(32, text_start+4) PCReg2(nextpc, nextnextpc, clk,
+                                       ~internal_halt, rst_b);
+   add_const #(4) NextPCAdder(nextnextpc, nextpc);
    assign        inst_addr = pc[31:2];
 
    // Instruction decoding
@@ -174,15 +137,7 @@ module mips_core(/*AUTOARG*/
        $display ( "=== Simulation Cycle %d ===", $time );
        $display ( "[pc=%x, inst=%x] [op=%x, rs=%d, rt=%d, rd=%d, imm=%x, f2=%x] [reset=%d, halted=%d]",
                    pc, inst, dcd_op, dcd_rs, dcd_rt, dcd_rd, dcd_imm, dcd_funct2, ~rst_b, halted);
-       $display ("[ctrl_we=%d, rd_data = %d, alu_out = %x, alu_flags = %b, imm_extend = %d, rt_data = %d]", ctrl_we, rd_data, alu__out, alu_flags, imm_extend, 
-                   rt_data, mem_to_reg); 
-       $display ("[mem_to_reg = %d, mem_addr = %x, mem_data_in = %x, mem_data_out = %x, regfile_write_data = %x, mem_excpt = %d]", 
-                  mem_to_reg, mem_addr, mem_data_in, mem_data_out, regfile_write_data, mem_excpt); 
-      //  $display ("[branch_result = %d, nextpc = %x, nextnextpc = %x, pc_src = %d, jumptarget = %x, branchtarget = %x]", 
-      //             branch_result, nextpc, nextnextpc, pc_src, jump_target, branchtarget);
-      $display  ("[if_out = %x, id_in = %x, ex_in = %x, mem_in = %x, wb_in = %x]", if_out, id_in, ex_in, mem_in, wb_in); 
      end
-
    end
    // synthesis translate_on
 
@@ -196,8 +151,6 @@ module mips_core(/*AUTOARG*/
    wire			ctrl_RI;		// From Decoder of mips_decode.v
    wire			ctrl_Sys;		// From Decoder of mips_decode.v
    wire			ctrl_we;		// From Decoder of mips_decode.v
-   wire mem_to_reg;     // From Decoder of mips_decode.v 
-   
    // End of automatics
 
    // Generate control signals
@@ -207,15 +160,6 @@ module mips_core(/*AUTOARG*/
 		       .ctrl_Sys	(ctrl_Sys),
 		       .ctrl_RI		(ctrl_RI),
 		       .alu__sel	(alu__sel[3:0]),
-           .alu__src  (alu__src), 
-           .mem_to_reg(mem_to_reg),
-           .ins_type(ins_type),
-           .imm_sign(imm_sign),
-           .is_shift(is_shift),
-           .mem_read_bytes(mem_read_bytes),
-           .mem_write_en(mem_write_en), 
-           .mem_write_bytes(mem_write_bytes),
-
 		       // Inputs
 		       .dcd_op		(dcd_op[5:0]),
 		       .dcd_funct2	(dcd_funct2[5:0]));
@@ -223,77 +167,29 @@ module mips_core(/*AUTOARG*/
    // Register File
    // Instantiate the register file from reg_file.v here.
    // Don't forget to hookup the "halted" signal to trigger the register dump 
-   assign regfile_write_addr = (ins_type == `J_TYPE && ctrl_we) ? 'hffffffff : (ins_type == `I_TYPE) ? dcd_rt : dcd_rd; 
-   assign regfile_write_data = (ins_type == `J_TYPE && ctrl_we) ? (pc + 4) : (mem_to_reg) ? mem_data_out : alu__out; 
-
-   
-
-   regfile RegisterFile(
-    .rs_num(dcd_rs), 
-    .rt_num(dcd_rt), 
-    .rd_num(regfile_write_addr), 
-    .rd_data(regfile_write_data), 
-    .rd_we(ctrl_we), 
-    .clk(clk), 
-    .rst_b(rst_b),
-    .halted(halted), 
-    .rs_data(rs_data), 
-    .rt_data(rt_data)
-
-   ); 
+ 
+   // synthesis translate_off
+   initial begin
+     // Delete this block when you are ready to try for real
+     $display(""); 
+     $display(""); 
+     $display(""); 
+     $display(""); 
+     $display(">>>>> This works much better after you have hooked up the reg file. <<<<<");
+     $display(""); 
+     $display(""); 
+     $display(""); 
+     $display(""); 
+     $finish;
+   end
+   // synthesis translate_on
 
    // Execute
-   assign imm_extend = (is_shift) ? dcd_shamt : (imm_sign) ? dcd_se_imm : dcd_e_imm; 
-
-   assign alu_input_1 = (is_shift) ? dcd_shamt : rs_data; 
-
-   assign alu_input_2 =(mem_to_reg) ? dcd_se_mem_offset : (alu__src) ? imm_extend : rt_data; 
    mips_ALU ALU(.alu__out(alu__out), 
-                .alu__op1(alu_input_1),
-                .alu__op2(alu_input_2),
-                .alu__sel(alu__sel),
-                .alu_flags(alu_flags));
-
-   assign branch_result = ((dcd_op == `OP_BEQ) && alu_flags[3] == 1) || ((dcd_op == `OP_BNE) && alu_flags[3] != 1); 
-   
-
-   assign        mem_addr = (mem_to_reg) ? (alu__out[29:0] >> 2) : 0;
-   assign        mem_data_in = rt_data;
-
-
-
-   assign jump_target = {pc[31:28], dcd_target, 2'b00}; 
-   assign branchtarget = pc + 4 + dcd_se_offset; 
-   // assign nextnextpc = nextpc + 4; 
-   assign branch_pc = (branch_result) ? branchtarget : pc + 4; 
-
-
-
-   assign nextpc = (pc_src == 3'b1) ? jump_target : 
-                   (pc_src == 3'b11 && branch_result == 1'b1) ? branchtarget : 
-                        pc + 4;
-   assign nextnextpc = (pc_src == 3'b1) ? jump_target + 4 : 
-                   (pc_src == 3'b11 && branch_result == 1'b1) ? branchtarget + 4: 
-                        nextpc + 4; 
-
-   assign pc_src = (ins_type == `J_TYPE) ? 3'b1 : (ins_type == `B_TYPE) ? 3'b11 : 3'b0; 
-
-
-   // // this block is basically our pc_sel mux 
-   // always @(*) begin 
-   //    case (pc_src) 
-   //       3'b1: // jump instruction 
-   //          nextpc = jump_target; 
-   //       3'b11:   // branch instruction 
-   //          nextpc = (branch_result) ? branchtarget : nextpc; 
-   //    endcase 
-      
-   // end
-
-
+                .alu__op1(rs_data),
+                .alu__op2(dcd_se_imm),
+                .alu__sel(alu__sel));
  
-
-   
    // Miscellaneous stuff (Exceptions, syscalls, and halt)
    exception_unit EU(.exception_halt(exception_halt), .pc(pc), .rst_b(rst_b),
                      .clk(clk), .load_ex_regs(load_ex_regs),
@@ -333,55 +229,14 @@ endmodule // mips_core
 //// in1 (input)  - Operand modified by the operation
 //// in2 (input)  - Operand used (in arithmetic ops) to modify in1
 //// sel (input)  - Selects which operation is to be performed
+////
+module mips_ALU(alu__out, alu__op1, alu__op2, alu__sel);
 
-module mips_ALU(alu__out, alu_flags, alu__op1, alu__op2, alu__sel);
-
-   output reg [31:0] alu__out;
-   output reg [3:0] alu_flags; // from MSB to LSB, is Z C N V 
+   output [31:0] alu__out;
    input [31:0]  alu__op1, alu__op2;
    input [3:0]   alu__sel;
-   wire set_ovflow; 
-   wire pre_sign; 
-   wire keep_sign_on_ovflow; 
-   reg carry, zero; 
 
-   assign pre_sign = alu__op1[31]; 
-   
-   
-   // weird flag creation for N -- https://zipcpu.com/zipcpu/2017/08/11/simple-alu.html 
-   assign keep_sign_on_ovflow = ((alu__sel == `ALU_ADD) && (alu__op1[31] == alu__op2[31])) || ((alu__sel == `ALU_SUB && (alu__op1[31] != alu__op2[31]))); 
-   always @(*) begin 
-      zero = ~|{alu__out  ^ 32'h00000000};
-      alu_flags = {zero, carry, alu__out[31] ^ ((keep_sign_on_ovflow) && (pre_sign != alu__out[31])), 1'b0};
-   end 
-   always @(*) begin 
-      
-      case (alu__sel)
-         `ALU_ADD: 
-            {carry, alu__out} = alu__op1 + alu__op2; 
-         `ALU_ADDU: 
-            alu__out = alu__op1 + alu__op2; // right now, don't care about distinctions between unsigned and signed 
-         `ALU_SUB: 
-            {carry, alu__out} = alu__op1 - alu__op2; 
-         `ALU_SUBU: 
-            alu__out = alu__op1 - alu__op2; 
-         `ALU_AND: 
-            alu__out = alu__op1 & alu__op2; 
-         `ALU_OR: 
-            alu__out = alu__op1 | alu__op2; 
-         `ALU_XOR: 
-            alu__out = alu__op1 ^ alu__op2; 
-         `ALU_SRL: 
-            alu__out = alu__op2 >> alu__op1; 
-         `ALU_SRA: 
-            alu__out = alu__op2 >>> alu__op1; 
-         `ALU_SLL: 
-            alu__out = alu__op2 << alu__op1; 
-         default: 
-            {carry, alu__out} = alu__op1 + alu__op2; 
-
-      endcase 
-   end 
+   adder AdderUnit(alu__out, alu__op1, alu__op2, alu__sel[0]);
 
 endmodule
 

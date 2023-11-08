@@ -7,7 +7,7 @@ main:
         addiu   $2, $zero, 1024
         addu    $3, $2, $2
         or      $4, $3, $2
-        add     $5, $zero, 1234
+        addi     $5, $zero, 1234
         sll     $6, $5, 16
         addiu   $7, $6, 9999
         subu    $8, $7, $2
