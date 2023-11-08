@@ -84,12 +84,15 @@ module mips_core(/*AUTOARG*/
    
 
    // Internal signals
-   wire [31:0]   pc, nextpc, nextnextpc, jump_target;
+   wire [31:0] nextpc, branch_pc; 
+   wire [31:0]   pc, nextnextpc, jump_target, branchtarget;
+   wire [2:0] pc_src; 
    wire          exception_halt, syscall_halt, internal_halt;
    wire          load_epc, load_bva, load_bva_sel;
    wire [31:0]   rt_data, rs_data, rd_data, alu__out, r_v0;
    wire [31:0]   epc, cause, bad_v_addr;
    wire [4:0]    cause_code;
+   wire [3:0]    alu_flags; 
 
    // Decode signals
    wire [31:0]   dcd_se_imm, dcd_se_offset, dcd_e_imm, dcd_se_mem_offset;
@@ -109,8 +112,8 @@ module mips_core(/*AUTOARG*/
    
    // PC Management
    register #(32, text_start) PCReg(pc, nextpc, clk, ~internal_halt, rst_b);
-   register #(32, text_start+4) PCReg2(nextpc, nextnextpc, clk,
-                                       ~internal_halt, rst_b);
+   // register #(32, text_start+4) PCReg2(nextpc, nextnextpc, clk,
+   //                                     ~internal_halt, rst_b);
    assign        inst_addr = pc[31:2];
 
    // Instruction decoding
@@ -141,10 +144,12 @@ module mips_core(/*AUTOARG*/
        $display ( "=== Simulation Cycle %d ===", $time );
        $display ( "[pc=%x, inst=%x] [op=%x, rs=%d, rt=%d, rd=%d, imm=%x, f2=%x] [reset=%d, halted=%d]",
                    pc, inst, dcd_op, dcd_rs, dcd_rt, dcd_rd, dcd_imm, dcd_funct2, ~rst_b, halted);
-       $display ("[ctrl_we=%d, rd_data = %d, alu_out = %d, imm_extend = %d, rt_data = %d]", ctrl_we, rd_data, alu__out, imm_extend, 
+       $display ("[ctrl_we=%d, rd_data = %d, alu_out = %x, alu_flags = %b, imm_extend = %d, rt_data = %d]", ctrl_we, rd_data, alu__out, alu_flags, imm_extend, 
                    rt_data, mem_to_reg); 
        $display ("[mem_to_reg = %d, mem_addr = %x, mem_data_in = %x, mem_data_out = %x, regfile_write_data = %x, mem_excpt = %d]", 
                   mem_to_reg, mem_addr, mem_data_in, mem_data_out, regfile_write_data, mem_excpt); 
+       $display ("[branch_result = %d, nextpc = %x, nextnextpc = %x, pc_src = %d, jumptarget = %x, branchtarget = %x]", 
+                  branch_result, nextpc, nextnextpc, pc_src, jump_target, branchtarget);
      end
    end
    // synthesis translate_on
@@ -203,8 +208,6 @@ module mips_core(/*AUTOARG*/
     .rs_data(rs_data), 
     .rt_data(rt_data)
 
-
-
    ); 
 
    // Execute
@@ -216,15 +219,44 @@ module mips_core(/*AUTOARG*/
    mips_ALU ALU(.alu__out(alu__out), 
                 .alu__op1(alu_input_1),
                 .alu__op2(alu_input_2),
-                .alu__sel(alu__sel));
+                .alu__sel(alu__sel),
+                .alu_flags(alu_flags));
+
+   assign branch_result = ((dcd_op == `OP_BEQ) && alu_flags[3] == 1) || ((dcd_op == `OP_BNE) && alu_flags[3] != 1); 
+   
 
    assign        mem_addr = (mem_to_reg) ? (alu__out[29:0] >> 2) : 0;
    assign        mem_data_in = rt_data;
 
 
 
-   assign jumptarget = {pc[31:28], dcd_target, 2'b00}; 
-   assign nextnextpc = (ins_type == `J_TYPE) ? jump_target : nextpc + 4; 
+   assign jump_target = {pc[31:28], dcd_target, 2'b00}; 
+   assign branchtarget = pc + 4 + dcd_se_offset; 
+   // assign nextnextpc = nextpc + 4; 
+   assign branch_pc = (branch_result) ? branchtarget : pc + 4; 
+
+
+
+   assign nextpc = (pc_src == 3'b1) ? jump_target : 
+                   (pc_src == 3'b11 && branch_result == 1'b1) ? branchtarget : 
+                        pc + 4;
+   assign nextnextpc = (pc_src == 3'b1) ? jump_target + 4 : 
+                   (pc_src == 3'b11 && branch_result == 1'b1) ? branchtarget + 4: 
+                        nextpc + 4; 
+
+   assign pc_src = (ins_type == `J_TYPE) ? 3'b1 : (ins_type == `B_TYPE) ? 3'b11 : 3'b0; 
+
+
+   // // this block is basically our pc_sel mux 
+   // always @(*) begin 
+   //    case (pc_src) 
+   //       3'b1: // jump instruction 
+   //          nextpc = jump_target; 
+   //       3'b11:   // branch instruction 
+   //          nextpc = (branch_result) ? branchtarget : nextpc; 
+   //    endcase 
+      
+   // end
 
 
  
@@ -269,20 +301,37 @@ endmodule // mips_core
 //// in1 (input)  - Operand modified by the operation
 //// in2 (input)  - Operand used (in arithmetic ops) to modify in1
 //// sel (input)  - Selects which operation is to be performed
-////
-module mips_ALU(alu__out, alu__op1, alu__op2, alu__sel);
+
+module mips_ALU(alu__out, alu_flags, alu__op1, alu__op2, alu__sel);
 
    output reg [31:0] alu__out;
+   output reg [3:0] alu_flags; // from MSB to LSB, is Z C N V 
    input [31:0]  alu__op1, alu__op2;
    input [3:0]   alu__sel;
+   wire set_ovflow; 
+   wire pre_sign; 
+   wire keep_sign_on_ovflow; 
+   reg carry, zero; 
+
+   assign pre_sign = alu__op1[31]; 
+   
+   
+   // weird flag creation for N -- https://zipcpu.com/zipcpu/2017/08/11/simple-alu.html 
+   assign keep_sign_on_ovflow = ((alu__sel == `ALU_ADD) && (alu__op1[31] == alu__op2[31])) || ((alu__sel == `ALU_SUB && (alu__op1[31] != alu__op2[31]))); 
    always @(*) begin 
+      zero = ~|{alu__out  ^ 32'h00000000};
+      $display("%b %b %d %d", alu__out, zero, alu__op1, alu__op2);
+      alu_flags = {zero, carry, alu__out[31] ^ ((keep_sign_on_ovflow) && (pre_sign != alu__out[31])), 1'b0};
+   end 
+   always @(*) begin 
+      
       case (alu__sel)
          `ALU_ADD: 
-            alu__out = alu__op1 + alu__op2; 
+            {carry, alu__out} = alu__op1 + alu__op2; 
          `ALU_ADDU: 
             alu__out = alu__op1 + alu__op2; // right now, don't care about distinctions between unsigned and signed 
          `ALU_SUB: 
-            alu__out = alu__op1 - alu__op2; 
+            {carry, alu__out} = alu__op1 - alu__op2; 
          `ALU_SUBU: 
             alu__out = alu__op1 - alu__op2; 
          `ALU_AND: 
@@ -298,7 +347,7 @@ module mips_ALU(alu__out, alu__op1, alu__op2, alu__sel);
          `ALU_SLL: 
             alu__out = alu__op2 << alu__op1; 
          default: 
-            alu__out = alu__op1 + alu__op2; 
+            {carry, alu__out} = alu__op1 + alu__op2; 
 
       endcase 
    end 

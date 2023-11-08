@@ -169,8 +169,9 @@ module mips_decode(/*AUTOARG*/
               mem_write_en = 4'b1111; 
             end
             endcase 
-            
           end
+
+
         `OP_RTYPE: 
           begin 
             alu__src = 1'b0; 
@@ -181,39 +182,39 @@ module mips_decode(/*AUTOARG*/
               3'b0: 
                 begin 
                   case (dcd_funct2) 
-              `OP0_ADD: 
-                alu__sel = `ALU_ADD; 
-              `OP0_ADDU: 
-                alu__sel = `ALU_ADD; 
-              `OP0_AND: 
-                alu__sel = `ALU_AND; 
-              `OP0_NOR: 
-                alu__sel = `ALU_NOR; 
-              `OP0_XOR: 
-                alu__sel = `ALU_XOR; 
-              `OP0_OR: 
-                alu__sel = `ALU_OR; 
-              `OP0_SLT: 
-                alu__sel = `ALU_SLT; 
-              `OP0_SUB: 
-                alu__sel = `ALU_SUB; 
-              `OP0_SLT: 
-                alu__sel = `ALU_SLT; 
-              `OP0_SRL: 
-                begin
-                  imm_sign = 1'b0; 
-                  alu__sel = `ALU_SRL; 
-                  is_shift = 1'b1; 
-                end
-              `OP0_SLL:
-                begin 
-                  imm_sign = 1'b0; 
-                  alu__sel = `ALU_SLL; 
-                  is_shift = 1'b1; 
-                end
-              `OP0_SRA: 
-                alu__sel = `ALU_SRA; 
-              endcase 
+                  `OP0_ADD: 
+                    alu__sel = `ALU_ADD; 
+                  `OP0_ADDU: 
+                    alu__sel = `ALU_ADD; 
+                  `OP0_AND: 
+                    alu__sel = `ALU_AND; 
+                  `OP0_NOR: 
+                    alu__sel = `ALU_NOR; 
+                  `OP0_XOR: 
+                    alu__sel = `ALU_XOR; 
+                  `OP0_OR: 
+                    alu__sel = `ALU_OR; 
+                  `OP0_SLT: 
+                    alu__sel = `ALU_SLT; 
+                  `OP0_SUB: 
+                    alu__sel = `ALU_SUB; 
+                  `OP0_SLT: 
+                    alu__sel = `ALU_SLT; 
+                  `OP0_SRL: 
+                    begin
+                      imm_sign = 1'b0; 
+                      alu__sel = `ALU_SRL; 
+                      is_shift = 1'b1; 
+                    end
+                  `OP0_SLL:
+                    begin 
+                      imm_sign = 1'b0; 
+                      alu__sel = `ALU_SLL; 
+                      is_shift = 1'b1; 
+                    end
+                  `OP0_SRA: 
+                    alu__sel = `ALU_SRA; 
+                  endcase 
               
               end
               3'b10: 
@@ -224,8 +225,39 @@ module mips_decode(/*AUTOARG*/
                 end
 
               3'b11: // jal instruction 
-                ins_type = `J_TYPE; 
+                begin
+                  ins_type = `J_TYPE; 
+                  
+                end 
 
+              3'b100:  // beq instruction 
+              begin 
+                ins_type = `B_TYPE; 
+                alu__sel = `ALU_SUB; // ensure a - b == 0 
+                is_shift = 1'b0; 
+              end 
+                
+
+              3'b101: 
+                begin 
+                  ins_type = `B_TYPE;
+                  alu__sel = `ALU_SUB; // just look at if a - b != 0 
+                end 
+
+              3'b110: // blez instruction 
+                begin 
+                  ins_type = `B_TYPE;
+                  alu__sel = `ALU_SUB; // b should be hard set to 0 -- see if a - b < 0 by looking at N bit out of ALU 
+                end 
+              3'b111: // bgtz instruction 
+                begin 
+                  ins_type = `B_TYPE;
+                  alu__sel = `ALU_SUB; // b should be hard set to 0 -- see if a - b > 0 by looking at N and Z bit of ALU 
+                end 
+
+
+
+          
 
 
             endcase 
