@@ -29,6 +29,8 @@ Currently, the implemented instructions are:
 - JAL
 - JALR
 - JR
+- BEQ 
+- BNE
 
 The current version of the MIPS processor is in the problem directory (aptly named). I created custom makefile targets to compile & simulate it with Icarus & Verilator: 
 
