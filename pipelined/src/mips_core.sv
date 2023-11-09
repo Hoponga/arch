@@ -108,6 +108,9 @@ module mips_core(/*AUTOARG*/
    wire [4:0]    cause_code;
    wire [3:0]    alu_flags; 
 
+   wire [31:0] if_controls, id_controls, ex_controls, mem_controls, wb_controls; 
+   wire [256:0] id_in, if_out, id_out, ex_in, ex_out, mem_in, mem_out, wb_in; 
+
    // Decode signals
    wire [31:0]   dcd_se_imm, dcd_se_offset, dcd_e_imm, dcd_se_mem_offset;
    wire [5:0]    dcd_op, dcd_funct2;
@@ -130,17 +133,11 @@ module mips_core(/*AUTOARG*/
 
    // Pipeline registers 
 
-   assign if_out = {'0, inst}; 
 
-   // control signals should all go into instruction decode 
-   assign id_out = {'0, alu__src, mem_to_reg, mem_write_en, mem_read_bytes, imm_sign, ins_type, id_in[31:0]}; 
-   assign ex_out = ex_in; 
-   assign mem_out = mem_in; 
+   // Going into IFID pipeline register -- current and instruction data 
+   assign if_out = {32'b0, pc,32'b0, inst}; 
+   register #(256, 0) IFIDReg(id_in, if_out, clk, ~internal_halt, rst_b); 
 
-   register #(128, 0) IFIDReg(id_in, if_out, clk, ~internal_halt, rst_b); 
-   register #(128, 0) IDEXReg(ex_in, id_out, clk, ~internal_halt, rst_b); 
-   register #(128, 0) EXMEMReg(mem_in, ex_out, clk, ~internal_halt, rst_b);       
-   register #(128, 0) MEMWBReg(wb_in, mem_out, clk, ~internal_halt, rst_b);  
 
    // register #(32, text_start+4) PCReg2(nextpc, nextnextpc, clk,
    //                                     ~internal_halt, rst_b);
@@ -219,12 +216,34 @@ module mips_core(/*AUTOARG*/
 		       // Inputs
 		       .dcd_op		(dcd_op[5:0]),
 		       .dcd_funct2	(dcd_funct2[5:0]));
- 
+
+
+   // following decode, all the control signals must flow into the IDEX register 
+
+   
+   // control signals should all go into instruction decode
+   // Execute stage needs: 
+   // Control signals: alu__sel, alu__src, mem_to_reg, ctrl_we, imm_sign, is_shift -- for now, don't worry about branch controls 
+
+   assign id_controls = {'0, mem_write_bytes, mem_read_bytes, mem_write_en, alu__sel, alu__src, mem_to_reg, ctrl_we, imm_sign, is_shift};
+
+   
+
+   // Execute
+   assign imm_extend = (mem_to_reg) ? dcd_se_mem_offset : 
+                        (is_shift) ? dcd_shamt :
+                         (imm_sign) ? dcd_se_imm : 
+                         dcd_e_imm; 
+
+   // Data: PC, rs_data1,  rt_data1, sign extended immediate, reg_write destination
+   assign id_out = {regfile_write_addr, (is_shift) ? dcd_shamt : rs_data, rt_data, imm_extend, id_in[95:64]}; 
+   // INSTRUCTION DECODE END -- pass data into IDEXReg and IDEXControlsReg 
+
    // Register File
    // Instantiate the register file from reg_file.v here.
    // Don't forget to hookup the "halted" signal to trigger the register dump 
    assign regfile_write_addr = (ins_type == `J_TYPE && ctrl_we) ? 'hffffffff : (ins_type == `I_TYPE) ? dcd_rt : dcd_rd; 
-   assign regfile_write_data = (ins_type == `J_TYPE && ctrl_we) ? (pc + 4) : (mem_to_reg) ? mem_data_out : alu__out; 
+   
 
    
 
@@ -241,18 +260,95 @@ module mips_core(/*AUTOARG*/
     .rt_data(rt_data)
 
    ); 
+   register #(256, 0) IDEXReg(ex_in, id_out, clk, ~internal_halt, rst_b); 
 
-   // Execute
-   assign imm_extend = (is_shift) ? dcd_shamt : (imm_sign) ? dcd_se_imm : dcd_e_imm; 
 
-   assign alu_input_1 = (is_shift) ? dcd_shamt : rs_data; 
 
-   assign alu_input_2 =(mem_to_reg) ? dcd_se_mem_offset : (alu__src) ? imm_extend : rt_data; 
+   register #(32, 0) IDEXControlsReg(ex_controls, id_controls, clk, ~internal_halt, rst_b); 
+   // input controls: 
+   // assign id_controls = {'0, mem_write_bytes, mem_read_bytes, mem_write_en, alu__sel, alu__src, mem_to_reg, ctrl_we, imm_sign, is_shift};
+   assign ex_is_shift = ex_controls[0]; 
+   assign ex_alu__sel = ex_controls[8:5]; 
+   assign ex_alu__src = ex_controls[4];
+   assign ex_mem_to_reg =  ex_controls[3]; 
+   assign ex_mem_write_en = ex_controls[9]; 
+   assign ex_mem_read_bytes = ex_controls[12:10]; 
+   assign ex_mem_write_bytes = ex_controls[15:13]; 
+
+   // input data: 
+   // assign id_out = {rs_data, rt_data, imm_extend, pc}; 
+   assign ex_regfile_write_addr = ex_in[132:128]; // carry over all the way to writeback stage 
+   assign ex_rs_data = ex_in[127:96];     // assuming if the alu needs a shift value, rs_data will contain it 
+   assign ex_rt_data =  ex_in[95:64]; 
+   assign ex_imm_extend = ex_in[63:32]; 
+   assign ex_pc = ex_in[31:0]; 
+
+   
+
+   assign ex_controls = {'0, mem_write_bytes, mem_read_bytes, mem_write_en, mem_to_reg, ctrl_we}; 
+
+   
+
+   assign alu_input_1 = ex_rs_data; 
+
+   assign alu_input_2 = (ex_alu__src) ? ex_imm_extend : ex_rt_data;
+
+
+
    mips_ALU ALU(.alu__out(alu__out), 
                 .alu__op1(alu_input_1),
                 .alu__op2(alu_input_2),
-                .alu__sel(alu__sel),
+                .alu__sel(ex_alu__sel),
                 .alu_flags(alu_flags));
+
+
+
+   // output from execute stage -- the memory requires write_data = rt_data, read_address, 
+   assign ex_out = {'0, ex_regfile_write_addr, alu_flags, rt_data, alu__out}; 
+   assign ex_controls_out =  {'0, mem_write_bytes, mem_read_bytes, mem_write_en, mem_to_reg, ctrl_we}; 
+
+
+   register #(256, 0) EXMEMReg(mem_in, ex_out, clk, ~internal_halt, rst_b);   
+   register #(31, 0) EXMEMControlsReg(mem_controls, ex_controls_out, clk, ~internal_halt, rst_b); 
+
+   // carry over control signals 
+
+   assign mem_ctrl_we = mem_controls[0]; 
+   assign mem_mem_to_reg = mem_controls[1];
+   assign mem_write_en = mem_controls[2];       // Assign the ACTUAL memory write enable signal that goes to mips_mem to the incoming control signal 
+   assign mem_mem_read_bytes = mem_controls[5:3]; 
+   assign mem_mem_write_bytes = mem_controls[8:6]; 
+
+   assign mem_addr = ex_out[31:0];
+   assign mem_data_in = ex_out[63:32]; 
+   assign mem_regfile_write_addr = [72:68]; 
+
+   
+
+   assign mem_out = {'0, mem_regfile_write_addr, alu_out, mem_data_out}; 
+
+
+   assign mem_controls_out = {'0, mem_mem_to_reg, mem_ctrl_we}; 
+   register #(128, 0) MEMWBReg(wb_in, mem_out, clk, ~internal_halt, rst_b);  
+   register #(31, 0)  MEMWBControlsReg(wb_controls, mem_controls_out, clk, ~internal_halt, rst_b); 
+   
+
+   // // for now, the only control signals we need for writeback are mem_to_reg and ctrl_we; 
+   // assign regfile_write_data = (ins_type == `J_TYPE && ctrl_we) ? (pc + 4) : (mem_to_reg) ? mem_data_out : alu__out; 
+
+   // eventually build up to jump instructions lol 
+   assign wb_ctrl_we = wb_controls[0]; 
+   assign wb_mem_to_reg = wb_controls[1]; 
+
+   assign wb_mem_data_out = wb_out[31:0]; 
+   assign wb_alu_out = wb_out[63:32]; 
+   assign wb_regfile_write_addr = wb_out[95:64]; 
+
+   assign regfile_write_data = (wb_mem_to_reg) ? wb_mem_data_out : wb_alu_out; 
+
+
+ 
+   
 
    assign branch_result = ((dcd_op == `OP_BEQ) && alu_flags[3] == 1) || ((dcd_op == `OP_BNE) && alu_flags[3] != 1); 
    
