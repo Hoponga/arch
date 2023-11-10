@@ -79,12 +79,12 @@ module mips_core(/*AUTOARG*/
    output        halted;
    input         rst_b;
 
-   // for now have every pipeline register be 128 bits long -- can always prune later 
-   wire [127:0] if_out, id_in, id_out, ex_in, ex_out, mem_in, mem_out, wb_in;  // bitstrings for the pipeline registers 
-   wire [127:0]   IFID;  // Pipeline register between instruction fetch & instruction decode 
-   wire [127:0]   IDEX;  // pipeline register between instruction decode & execute 
-   wire [127:0]   EXMEM; // pipeline register between execute & memory 
-   wire [127:0]   MEMWB; // pipeline register between memory access & writeback
+   // // for now have every pipeline register be 128 bits long -- can always prune later 
+   // wire [127:0] if_out, id_in, id_out, ex_in, ex_out, mem_in, mem_out, wb_in;  // bitstrings for the pipeline registers 
+   // wire [127:0]   IFID;  // Pipeline register between instruction fetch & instruction decode 
+   // wire [127:0]   IDEX;  // pipeline register between instruction decode & execute 
+   // wire [127:0]   EXMEM; // pipeline register between execute & memory 
+   // wire [127:0]   MEMWB; // pipeline register between memory access & writeback
 
    
 
@@ -109,7 +109,8 @@ module mips_core(/*AUTOARG*/
    wire [3:0]    alu_flags; 
 
    wire [31:0] if_controls, id_controls, ex_controls, mem_controls, wb_controls; 
-   wire [256:0] id_in, if_out, id_out, ex_in, ex_out, mem_in, mem_out, wb_in; 
+   wire [31:0] if_controls_out, id_controls_out, ex_controls_out, mem_controls_out, wb_controls_out; 
+   wire [255:0] id_in, if_out, id_out, ex_in, ex_out, mem_in, mem_out, wb_in; 
 
    // Decode signals
    wire [31:0]   dcd_se_imm, dcd_se_offset, dcd_e_imm, dcd_se_mem_offset;
@@ -126,61 +127,7 @@ module mips_core(/*AUTOARG*/
    wire [31:0]   imm_extend; 
    wire [31:0]   alu_input_1; 
    wire [2:0]    mem_read_bytes, mem_write_bytes; // how many bytes to read from/write to memory -- don't care if not a load/store instruction 
-   
-   // PC Management
-   register #(32, text_start) PCReg(pc, nextpc, clk, ~internal_halt, rst_b);
 
-
-   // Pipeline registers 
-
-
-   // Going into IFID pipeline register -- current and instruction data 
-   assign if_out = {32'b0, pc,32'b0, inst}; 
-   register #(256, 0) IFIDReg(id_in, if_out, clk, ~internal_halt, rst_b); 
-
-
-   // register #(32, text_start+4) PCReg2(nextpc, nextnextpc, clk,
-   //                                     ~internal_halt, rst_b);
-   assign        inst_addr = pc[31:2];
-
-   // Instruction decoding
-   assign        dcd_op = inst[31:26];    // Opcode
-   assign        dcd_rs = inst[25:21];    // rs field
-   assign        dcd_rt = inst[20:16];    // rt field
-   assign        dcd_rd = inst[15:11];    // rd field
-   assign        dcd_shamt = inst[10:6];  // Shift amount
-   assign        dcd_bczft = inst[16];    // bczt or bczf?
-   assign        dcd_funct1 = inst[4:0];  // Coprocessor 0 function field
-   assign        dcd_funct2 = inst[5:0];  // funct field; secondary opcode
-   assign        dcd_offset = inst[15:0]; // offset field
-        // Sign-extended offset for branches
-   assign        dcd_se_offset = { {14{dcd_offset[15]}}, dcd_offset, 2'b00 };
-        // Sign-extended offset for load/store
-   assign        dcd_se_mem_offset = { {16{dcd_offset[15]}}, dcd_offset };
-   assign        dcd_imm = inst[15:0];        // immediate field
-   assign        dcd_e_imm = { 16'h0, dcd_imm };  // zero-extended immediate
-        // Sign-extended immediate
-   assign        dcd_se_imm = { {16{dcd_imm[15]}}, dcd_imm };
-   assign        dcd_target = inst[25:0];     // target field
-   assign        dcd_code = inst[25:6];       // Breakpoint code
-
-   // synthesis translate_off
-   always @(posedge clk) begin
-     // useful for debugging, you will want to comment this out for long programs
-     if (rst_b) begin
-       $display ( "=== Simulation Cycle %d ===", $time );
-       $display ( "[pc=%x, inst=%x] [op=%x, rs=%d, rt=%d, rd=%d, imm=%x, f2=%x] [reset=%d, halted=%d]",
-                   pc, inst, dcd_op, dcd_rs, dcd_rt, dcd_rd, dcd_imm, dcd_funct2, ~rst_b, halted);
-       $display ("[ctrl_we=%d, rd_data = %d, alu_out = %x, alu_flags = %b, imm_extend = %d, rt_data = %d]", ctrl_we, rd_data, alu__out, alu_flags, imm_extend, 
-                   rt_data, mem_to_reg); 
-       $display ("[mem_to_reg = %d, mem_addr = %x, mem_data_in = %x, mem_data_out = %x, regfile_write_data = %x, mem_excpt = %d]", 
-                  mem_to_reg, mem_addr, mem_data_in, mem_data_out, regfile_write_data, mem_excpt); 
-      //  $display ("[branch_result = %d, nextpc = %x, nextnextpc = %x, pc_src = %d, jumptarget = %x, branchtarget = %x]", 
-      //             branch_result, nextpc, nextnextpc, pc_src, jump_target, branchtarget);
-      $display  ("[if_out = %x, id_in = %x, ex_in = %x, mem_in = %x, wb_in = %x]", if_out, id_in, ex_in, mem_in, wb_in); 
-     end
-
-   end
    // synthesis translate_on
 
    // Let Verilog-Mode pipe wires through for us.  This is another example
@@ -195,7 +142,70 @@ module mips_core(/*AUTOARG*/
    wire			ctrl_we;		// From Decoder of mips_decode.v
    wire mem_to_reg;     // From Decoder of mips_decode.v 
    
-   // End of automatics
+   
+   // PC Management
+   register #(32, text_start) PCReg(pc, nextpc, clk, ~internal_halt, rst_b);
+
+
+   // Pipeline registers 
+
+
+   // Nothing is in the instruction fetch cycle??? 
+
+   // Going into IFID pipeline register -- current and instruction data 
+   assign if_out = {32'b0, pc, 32'b0, inst}; 
+   assign inst_addr = pc[31:2]; 
+   register #(256, 0) IFIDReg(id_in, if_out, clk, ~internal_halt, rst_b); 
+
+
+   
+   // synthesis translate_off
+   always @(posedge clk) begin
+     // useful for debugging, you will want to comment this out for long programs
+     if (rst_b) begin
+       $display ( "\n=== Simulation Cycle %d ===", $time );
+      //  $display ("[branch_result = %d, nextpc = %x, nextnextpc = %x, pc_src = %d, jumptarget = %x, branchtarget = %x]", 
+      //             branch_result, nextpc, nextnextpc, pc_src, jump_target, branchtarget);
+      $display("Fetch Stage: [pc=%x, inst=%x]",
+                   pc, inst);
+      $display("Decode Stage: [pc = %x, inst = %x] [op=%x, rs=%d, rt=%d, rd=%d, imm=%x, f2=%x] [reset=%d, halted=%d] [ctrl_we=%d, rs_data = %d, imm_extend = %d, rt_data = %d]  ", id_pc, id_inst, dcd_op, dcd_rs, dcd_rt, dcd_rd, dcd_imm, dcd_funct2, ~rst_b, halted, ctrl_we, rs_data, imm_extend, 
+                   rt_data); 
+      $display("Execute Stage: [alu_op1 = %d, alu_op2 = %d, alu_out = %d, alu__sel = %x, alu_src = %x, pc = %x] ", alu_input_1, alu_input_2, alu__out, ex_alu__sel, ex_alu__src, ex_pc); 
+      $display("Memory Stage: [mem_addr = %x, mem_write_data = %x, mem_read_data = %x, mem_write_en = %x]", mem_addr, mem_data_out, mem_data_in, mem_write_en); 
+      $display("Writeback Stage: [mem_to_reg = %x, reg_write_data = %d, reg_write_addr = %d]", mem_to_reg, regfile_write_data, regfile_write_addr); 
+
+     end
+
+   end
+   
+
+   // register #(32, text_start+4) PCReg2(nextpc, nextnextpc, clk,
+   //                                     ~internal_halt, rst_b);
+   wire [31:0] id_pc, id_inst; 
+   assign id_pc = id_in[95:64]; 
+   assign id_inst = id_in[31:0]; 
+
+   // Instruction decoding
+   assign        dcd_op = id_inst[31:26];    // Opcode
+   assign        dcd_rs = id_inst[25:21];    // rs field
+   assign        dcd_rt = id_inst[20:16];    // rt field
+   assign        dcd_rd = id_inst[15:11];    // rd field
+   assign        dcd_shamt = id_inst[10:6];  // Shift amount
+   assign        dcd_bczft = id_inst[16];    // bczt or bczf?
+   assign        dcd_funct1 = id_inst[4:0];  // Coprocessor 0 function field
+   assign        dcd_funct2 = id_inst[5:0];  // funct field; secondary opcode
+   assign        dcd_offset = id_inst[15:0]; // offset field
+        // Sign-extended offset for branches
+   assign        dcd_se_offset = { {14{dcd_offset[15]}}, dcd_offset, 2'b00 };
+        // Sign-extended offset for load/store
+   assign        dcd_se_mem_offset = { {16{dcd_offset[15]}}, dcd_offset };
+   assign        dcd_imm = id_inst[15:0];        // immediate field
+   assign        dcd_e_imm = { 16'h0, dcd_imm };  // zero-extended immediate
+        // Sign-extended immediate
+   assign        dcd_se_imm = { {16{dcd_imm[15]}}, dcd_imm };
+   assign        dcd_target = id_inst[25:0];     // target field
+   assign        dcd_code = id_inst[25:6];       // Breakpoint code
+
 
    // Generate control signals
    mips_decode Decoder(/*AUTOINST*/
@@ -227,7 +237,8 @@ module mips_core(/*AUTOARG*/
 
    assign id_controls = {'0, mem_write_bytes, mem_read_bytes, mem_write_en, alu__sel, alu__src, mem_to_reg, ctrl_we, imm_sign, is_shift};
 
-   
+   wire [4:0] id_regfile_write_addr; 
+   assign id_regfile_write_addr = (ins_type == `J_TYPE && ctrl_we) ? 'hffffffff : (ins_type == `I_TYPE) ? dcd_rt : dcd_rd; 
 
    // Execute
    assign imm_extend = (mem_to_reg) ? dcd_se_mem_offset : 
@@ -236,14 +247,11 @@ module mips_core(/*AUTOARG*/
                          dcd_e_imm; 
 
    // Data: PC, rs_data1,  rt_data1, sign extended immediate, reg_write destination
-   assign id_out = {regfile_write_addr, (is_shift) ? dcd_shamt : rs_data, rt_data, imm_extend, id_in[95:64]}; 
+   assign id_out = {id_regfile_write_addr, (is_shift) ? dcd_shamt : rs_data, rt_data, imm_extend, id_in[95:64]}; 
    // INSTRUCTION DECODE END -- pass data into IDEXReg and IDEXControlsReg 
 
    // Register File
    // Instantiate the register file from reg_file.v here.
-   // Don't forget to hookup the "halted" signal to trigger the register dump 
-   assign regfile_write_addr = (ins_type == `J_TYPE && ctrl_we) ? 'hffffffff : (ins_type == `I_TYPE) ? dcd_rt : dcd_rd; 
-   
 
    
 
@@ -260,11 +268,19 @@ module mips_core(/*AUTOARG*/
     .rt_data(rt_data)
 
    ); 
+
+
+
    register #(256, 0) IDEXReg(ex_in, id_out, clk, ~internal_halt, rst_b); 
-
-
-
    register #(32, 0) IDEXControlsReg(ex_controls, id_controls, clk, ~internal_halt, rst_b); 
+
+   wire ex_is_shift, ex_alu__src, ex_mem_to_reg, ex_mem_write_en; 
+   wire [3:0] ex_alu__sel; 
+   wire [2:0] ex_mem_read_bytes, ex_mem_write_bytes; 
+   wire [4:0] ex_regfile_write_addr; 
+
+   wire [31:0] ex_rs_data, ex_rt_data, ex_imm_extend, ex_pc; 
+
    // input controls: 
    // assign id_controls = {'0, mem_write_bytes, mem_read_bytes, mem_write_en, alu__sel, alu__src, mem_to_reg, ctrl_we, imm_sign, is_shift};
    assign ex_is_shift = ex_controls[0]; 
@@ -281,19 +297,12 @@ module mips_core(/*AUTOARG*/
    assign ex_rs_data = ex_in[127:96];     // assuming if the alu needs a shift value, rs_data will contain it 
    assign ex_rt_data =  ex_in[95:64]; 
    assign ex_imm_extend = ex_in[63:32]; 
-   assign ex_pc = ex_in[31:0]; 
-
+   assign ex_pc = ex_in[31:0];      // leave PC here for fun 
    
 
-   assign ex_controls = {'0, mem_write_bytes, mem_read_bytes, mem_write_en, mem_to_reg, ctrl_we}; 
-
-   
 
    assign alu_input_1 = ex_rs_data; 
-
    assign alu_input_2 = (ex_alu__src) ? ex_imm_extend : ex_rt_data;
-
-
 
    mips_ALU ALU(.alu__out(alu__out), 
                 .alu__op1(alu_input_1),
@@ -309,9 +318,16 @@ module mips_core(/*AUTOARG*/
 
 
    register #(256, 0) EXMEMReg(mem_in, ex_out, clk, ~internal_halt, rst_b);   
-   register #(31, 0) EXMEMControlsReg(mem_controls, ex_controls_out, clk, ~internal_halt, rst_b); 
+   register #(32, 0) EXMEMControlsReg(mem_controls, ex_controls_out, clk, ~internal_halt, rst_b); 
 
    // carry over control signals 
+
+   wire mem_ctrl_we, mem_mem_to_reg, mem_write_en; 
+   wire [2:0] mem_mem_read_bytes, mem_mem_write_bytes; 
+
+   // wire [31:0] mem_addr, mem_data_in; 
+   wire [4:0] mem_regfile_write_addr; 
+
 
    assign mem_ctrl_we = mem_controls[0]; 
    assign mem_mem_to_reg = mem_controls[1];
@@ -319,42 +335,51 @@ module mips_core(/*AUTOARG*/
    assign mem_mem_read_bytes = mem_controls[5:3]; 
    assign mem_mem_write_bytes = mem_controls[8:6]; 
 
-   assign mem_addr = ex_out[31:0];
-   assign mem_data_in = ex_out[63:32]; 
-   assign mem_regfile_write_addr = [72:68]; 
+   assign mem_addr = mem_in[29:0] >> 2;
+   assign mem_data_in = mem_in[63:32]; 
+   assign mem_regfile_write_addr = mem_in[72:68]; 
 
    
 
-   assign mem_out = {'0, mem_regfile_write_addr, alu_out, mem_data_out}; 
+   assign mem_out = {'0, mem_regfile_write_addr, mem_in[31:0], mem_data_out}; 
 
 
    assign mem_controls_out = {'0, mem_mem_to_reg, mem_ctrl_we}; 
-   register #(128, 0) MEMWBReg(wb_in, mem_out, clk, ~internal_halt, rst_b);  
-   register #(31, 0)  MEMWBControlsReg(wb_controls, mem_controls_out, clk, ~internal_halt, rst_b); 
+   register #(256, 0) MEMWBReg(wb_in, mem_out, clk, ~internal_halt, rst_b);  
+   register #(32, 0)  MEMWBControlsReg(wb_controls, mem_controls_out, clk, ~internal_halt, rst_b); 
    
 
    // // for now, the only control signals we need for writeback are mem_to_reg and ctrl_we; 
    // assign regfile_write_data = (ins_type == `J_TYPE && ctrl_we) ? (pc + 4) : (mem_to_reg) ? mem_data_out : alu__out; 
 
-   // eventually build up to jump instructions lol 
+   // eventually build up to jump instructions lol
+
+   wire wb_ctrl_we, wb_mem_to_reg; 
+   wire [31:0] wb_alu_out, wb_regfile_write_addr, wb_mem_data_out;
+
+
    assign wb_ctrl_we = wb_controls[0]; 
    assign wb_mem_to_reg = wb_controls[1]; 
 
-   assign wb_mem_data_out = wb_out[31:0]; 
-   assign wb_alu_out = wb_out[63:32]; 
-   assign wb_regfile_write_addr = wb_out[95:64]; 
+   assign wb_mem_data_out = wb_in[31:0]; 
+   assign wb_alu_out = wb_in[63:32]; 
+   assign wb_regfile_write_addr = wb_in[95:64]; 
+
+   assign regfile_write_addr = wb_regfile_write_addr; 
 
    assign regfile_write_data = (wb_mem_to_reg) ? wb_mem_data_out : wb_alu_out; 
 
 
  
+
+   // cursed branching code 
    
 
    assign branch_result = ((dcd_op == `OP_BEQ) && alu_flags[3] == 1) || ((dcd_op == `OP_BNE) && alu_flags[3] != 1); 
    
 
-   assign        mem_addr = (mem_to_reg) ? (alu__out[29:0] >> 2) : 0;
-   assign        mem_data_in = rt_data;
+   // assign        mem_addr = (mem_to_reg) ? (alu__out[29:0] >> 2) : 0;
+   // assign        mem_data_in = rt_data;
 
 
 
