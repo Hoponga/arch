@@ -99,7 +99,7 @@ module mips_core(/*AUTOARG*/
 
    // Internal signals
    wire [31:0] nextpc, branch_pc; 
-   wire [31:0]   pc, nextnextpc, jump_target, branchtarget;
+   wire [31:0]   pc, nextnextpc, jump_target, branchtarget, wb_pc;
    wire [2:0] pc_src; 
    wire          exception_halt, syscall_halt, internal_halt;
    wire          load_epc, load_bva, load_bva_sel;
@@ -146,6 +146,31 @@ module mips_core(/*AUTOARG*/
    // PC Management
    register #(32, text_start) PCReg(pc, nextpc, clk, ~internal_halt, rst_b);
 
+   wire stallnow, stallnext; 
+
+   register #(1, 0) StallReg(stallnow, stallnext, clk, ~internal_Halt, rst_b);
+   assign stallnext = (inst == 32'h0000000c && wb_pc != pc - 4);  
+
+
+
+   assign jump_target = {pc[31:28], dcd_target, 2'b00}; 
+   assign branchtarget = pc + 4 + dcd_se_offset; 
+   // assign nextnextpc = nextpc + 4; 
+   assign branch_pc = (branch_result) ? branchtarget : pc + 4; 
+
+
+   assign nextpc = (stallnext) ? pc : 
+                   (pc_src == 3'b1) ? jump_target : 
+                   (pc_src == 3'b11 && branch_result == 1'b1) ? branchtarget : 
+                        pc + 4;
+   assign nextnextpc = (stallnext) ? nextpc : 
+                       (pc_src == 3'b1) ? jump_target + 4 : 
+                       (pc_src == 3'b11 && branch_result == 1'b1) ? branchtarget + 4: 
+                        nextpc + 4; 
+
+   assign pc_src = (ins_type == `J_TYPE) ? 3'b1 : (ins_type == `B_TYPE) ? 3'b11 : 3'b0; 
+
+
 
    // Pipeline registers 
 
@@ -153,7 +178,9 @@ module mips_core(/*AUTOARG*/
    // Nothing is in the instruction fetch cycle??? 
 
    // Going into IFID pipeline register -- current and instruction data 
-   assign if_out = {32'b0, pc, 32'b0, inst}; 
+
+   // suppose the next instruction is a syscall but our pipeline is not complete -- we should introduce stalls until all instructions in the pipeline are done 
+   assign if_out = {32'b0, pc, 32'b0, ~(stallnext) ? inst : 32'h0}; 
    assign inst_addr = pc[31:2]; 
    register #(256, 0) IFIDReg(id_in, if_out, clk, ~internal_halt, rst_b); 
 
@@ -171,8 +198,8 @@ module mips_core(/*AUTOARG*/
       $display("Decode Stage: [pc = %x, inst = %x] [op=%x, rs=%d, rt=%d, rd=%d, imm=%x, f2=%x] [reset=%d, halted=%d] [ctrl_we=%d, rs_data = %d, imm_extend = %d, rt_data = %d]  ", id_pc, id_inst, dcd_op, dcd_rs, dcd_rt, dcd_rd, dcd_imm, dcd_funct2, ~rst_b, halted, ctrl_we, rs_data, imm_extend, 
                    rt_data); 
       $display("Execute Stage: [alu_op1 = %d, alu_op2 = %d, alu_out = %d, alu__sel = %x, alu_src = %x, pc = %x] ", alu_input_1, alu_input_2, alu__out, ex_alu__sel, ex_alu__src, ex_pc); 
-      $display("Memory Stage: [mem_addr = %x, mem_write_data = %x, mem_read_data = %x, mem_write_en = %x]", mem_addr, mem_data_out, mem_data_in, mem_write_en); 
-      $display("Writeback Stage: [mem_to_reg = %x, reg_write_data = %d, reg_write_addr = %d]", mem_to_reg, regfile_write_data, regfile_write_addr); 
+      $display("Memory Stage: [mem_addr = %x, mem_write_data = %x, mem_read_data = %x, mem_write_en = %x, pc = %x]", mem_addr, mem_data_out, mem_data_in, mem_write_en, mem_pc); 
+      $display("Writeback Stage: [mem_to_reg = %x, reg_write_data = %d, reg_write_addr = %d, writeback_pc = %x, updated = %x]", mem_to_reg, regfile_write_data, regfile_write_addr, wb_pc, (wb_pc == pc - 4)); 
 
      end
 
@@ -313,7 +340,7 @@ module mips_core(/*AUTOARG*/
 
 
    // output from execute stage -- the memory requires write_data = rt_data, read_address, 
-   assign ex_out = {'0, ex_regfile_write_addr, alu_flags, rt_data, alu__out}; 
+   assign ex_out = {'0, ex_pc, ex_regfile_write_addr, alu_flags, rt_data, alu__out}; 
    assign ex_controls_out =  {'0, mem_write_bytes, mem_read_bytes, mem_write_en, mem_to_reg, ctrl_we}; 
 
 
@@ -327,6 +354,9 @@ module mips_core(/*AUTOARG*/
 
    // wire [31:0] mem_addr, mem_data_in; 
    wire [4:0] mem_regfile_write_addr; 
+   wire [31:0] mem_pc; 
+
+   
 
 
    assign mem_ctrl_we = mem_controls[0]; 
@@ -338,10 +368,11 @@ module mips_core(/*AUTOARG*/
    assign mem_addr = mem_in[29:0] >> 2;
    assign mem_data_in = mem_in[63:32]; 
    assign mem_regfile_write_addr = mem_in[72:68]; 
+   assign mem_pc = mem_in[104:73]; 
 
    
 
-   assign mem_out = {'0, mem_regfile_write_addr, mem_in[31:0], mem_data_out}; 
+   assign mem_out = {'0, mem_pc, mem_regfile_write_addr, mem_in[31:0], mem_data_out}; 
 
 
    assign mem_controls_out = {'0, mem_mem_to_reg, mem_ctrl_we}; 
@@ -355,7 +386,8 @@ module mips_core(/*AUTOARG*/
    // eventually build up to jump instructions lol
 
    wire wb_ctrl_we, wb_mem_to_reg; 
-   wire [31:0] wb_alu_out, wb_regfile_write_addr, wb_mem_data_out;
+   wire [31:0] wb_mem_data_out, wb_alu_out, wb_regfile_write_addr; 
+ 
 
 
    assign wb_ctrl_we = wb_controls[0]; 
@@ -363,9 +395,10 @@ module mips_core(/*AUTOARG*/
 
    assign wb_mem_data_out = wb_in[31:0]; 
    assign wb_alu_out = wb_in[63:32]; 
-   assign wb_regfile_write_addr = wb_in[95:64]; 
+   assign wb_regfile_write_addr = wb_in[68:64]; 
 
    assign regfile_write_addr = wb_regfile_write_addr; 
+   assign wb_pc = wb_in[100:69]; 
 
    assign regfile_write_data = (wb_mem_to_reg) ? wb_mem_data_out : wb_alu_out; 
 
@@ -382,22 +415,6 @@ module mips_core(/*AUTOARG*/
    // assign        mem_data_in = rt_data;
 
 
-
-   assign jump_target = {pc[31:28], dcd_target, 2'b00}; 
-   assign branchtarget = pc + 4 + dcd_se_offset; 
-   // assign nextnextpc = nextpc + 4; 
-   assign branch_pc = (branch_result) ? branchtarget : pc + 4; 
-
-
-
-   assign nextpc = (pc_src == 3'b1) ? jump_target : 
-                   (pc_src == 3'b11 && branch_result == 1'b1) ? branchtarget : 
-                        pc + 4;
-   assign nextnextpc = (pc_src == 3'b1) ? jump_target + 4 : 
-                   (pc_src == 3'b11 && branch_result == 1'b1) ? branchtarget + 4: 
-                        nextpc + 4; 
-
-   assign pc_src = (ins_type == `J_TYPE) ? 3'b1 : (ins_type == `B_TYPE) ? 3'b11 : 3'b0; 
 
 
    // // this block is basically our pc_sel mux 
