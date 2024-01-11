@@ -170,6 +170,30 @@ module mips_core(/*AUTOARG*/
 
    wire stallnow, stallnext; 
 
+   wire [11:0] current_history_reg, next_history_reg; // global history register values 
+
+   register #(12, 0) GlobalHistoryRegister(current_history_reg, next_history_reg, clk, ~internal_halt, rst_b); 
+
+
+   localparam STRONGLY_NOT_TAKEN = 2'b00; 
+   localparam WEAKLY_NOT_TAKEN = 2'b01; 
+   localparam WEAKLY_TAKEN = 2'b11; 
+   localparam STRONGLY_TAKEN = 2'b10; 
+   wire is_branch, branch_prediction, pth_update;
+
+   assign branch_prediction = is_branch & (branch_predicting_counter == WEAKLY_TAKEN | branch_predicting_counter == STRONGLY_TAKEN); 
+   wire [5:0] fetch_op; 
+   assign fetch_op = inst[31:26]; 
+   assign is_branch = (fetch_op == `OP_BEQ) | (fetch_op == `OP_BNE); // pth_update is basically this logic but done in the execute stage
+   // only update history table when the actual branch resulthas been calculated in execute stage. 
+
+
+   wire [1:0] branch_predicting_counter; 
+
+   PatternHistoryTable pth(clk, rst_b, pth_update, branch_result, current_history_reg, branch_predicting_counter); 
+
+
+
    register #(1, 0) StallReg(stallnow, stallnext, clk, ~internal_Halt, rst_b);
 
    // assign stallnext to 32'h13 -- goofy instruction 
@@ -340,7 +364,7 @@ module mips_core(/*AUTOARG*/
    assign forwarded_rs_data = (forward_from_ex[1]) ? alu__out : 
                               (forward_from_mem_in[1]) ? mem_in[31:0] : 
                               (forward_from_mem_out[1]) ? mem_data_out : rs_data; 
-   assign id_out = {id_regfile_write_addr, (is_shift) ? dcd_shamt : forwarded_rs_data, forwarded_rt_data, imm_extend, id_in[95:64]}; 
+   assign id_out = {dcd_op, id_regfile_write_addr, (is_shift) ? {27'b0, dcd_shamt} : forwarded_rs_data, forwarded_rt_data, imm_extend, id_in[95:64]}; 
    // INSTRUCTION DECODE END -- pass data into IDEXReg and IDEXControlsReg 
 
 
@@ -354,7 +378,7 @@ module mips_core(/*AUTOARG*/
 
 
    
-
+   wire [5:0] ex_dcd_op; 
    // input controls: 
    // assign id_controls = {'0, mem_write_bytes, mem_read_bytes, mem_write_en, alu__sel, alu__src, mem_to_reg, ctrl_we, imm_sign, is_shift};
    assign ex_is_shift = ex_controls[0]; 
@@ -369,6 +393,7 @@ module mips_core(/*AUTOARG*/
 
    // input data: 
    // assign id_out = {rs_data, rt_data, imm_extend, pc}; 
+   assign ex_dcd_op = ex_in[138:133]; // necessary for branch prediction code 
    assign ex_regfile_write_addr = ex_in[132:128]; // carry over all the way to writeback stage 
    assign ex_rs_data = ex_in[127:96];     // assuming if the alu needs a shift value, rs_data will contain it 
    assign ex_rt_data =  ex_in[95:64]; 
@@ -386,6 +411,9 @@ module mips_core(/*AUTOARG*/
                 .alu__sel(ex_alu__sel),
                 .alu_flags(alu_flags));
 
+   assign branch_result = ((ex_dcd_op == `OP_BEQ) && alu_flags[3] == 1) || ((ex_dcd_op == `OP_BNE) && alu_flags[3] != 1);
+   assign pth_update =  (ex_dcd_op == `OP_BEQ) | (ex_dcd_op == `OP_BNE); 
+   
 
 
    // output from execute stage -- the memory requires write_data = rt_data, read_address, 
@@ -449,7 +477,7 @@ module mips_core(/*AUTOARG*/
    // cursed branching code 
    
 
-   assign branch_result = ((dcd_op == `OP_BEQ) && alu_flags[3] == 1) || ((dcd_op == `OP_BNE) && alu_flags[3] != 1); 
+   
    
 
    // assign        mem_addr = (mem_to_reg) ? (alu__out[29:0] >> 2) : 0;
