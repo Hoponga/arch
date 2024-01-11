@@ -141,6 +141,28 @@ module mips_core(/*AUTOARG*/
    wire			ctrl_Sys;		// From Decoder of mips_decode.v
    wire			ctrl_we;		// From Decoder of mips_decode.v
    wire mem_to_reg;     // From Decoder of mips_decode.v 
+
+   // forwarding stuff
+   wire [1:0] forward_from_ex, forward_from_mem_in, forward_from_mem_out; 
+   wire [31:0] forwarded_rs_data, forwarded_rt_data; 
+
+   // pipeline stuff 
+   wire ex_is_shift, ex_alu__src, ex_mem_to_reg, ex_mem_write_en, ex_ctrl_we; 
+   wire [3:0] ex_alu__sel; 
+   wire [2:0] ex_mem_read_bytes, ex_mem_write_bytes; 
+   wire [4:0] ex_regfile_write_addr; 
+
+   wire [31:0] ex_rs_data, ex_rt_data, ex_imm_extend, ex_pc; 
+
+   wire mem_ctrl_we, mem_mem_to_reg, mem_write_en; 
+   wire [2:0] mem_mem_read_bytes, mem_mem_write_bytes; 
+
+   // wire [31:0] mem_addr, mem_data_in; 
+   wire [4:0] mem_regfile_write_addr; 
+   wire [31:0] mem_pc; 
+
+   wire wb_ctrl_we, wb_mem_to_reg; 
+   wire [31:0] wb_mem_data_out, wb_alu_out, wb_regfile_write_addr; 
    
    
    // PC Management
@@ -149,6 +171,10 @@ module mips_core(/*AUTOARG*/
    wire stallnow, stallnext; 
 
    register #(1, 0) StallReg(stallnow, stallnext, clk, ~internal_Halt, rst_b);
+
+   // assign stallnext to 32'h13 -- goofy instruction 
+
+   
    assign stallnext = (inst == 32'h0000000c && wb_pc != pc - 4);  
 
 
@@ -195,10 +221,10 @@ module mips_core(/*AUTOARG*/
       //             branch_result, nextpc, nextnextpc, pc_src, jump_target, branchtarget);
       $display("Fetch Stage: [pc=%x, inst=%x]",
                    pc, inst);
-      $display("Decode Stage: [pc = %x, inst = %x] [op=%x, rs=%d, rt=%d, rd=%d, imm=%x, f2=%x] [reset=%d, halted=%d] [ctrl_we=%d, rs_data = %d, imm_extend = %d, rt_data = %d]  ", id_pc, id_inst, dcd_op, dcd_rs, dcd_rt, dcd_rd, dcd_imm, dcd_funct2, ~rst_b, halted, ctrl_we, rs_data, imm_extend, 
-                   rt_data); 
+      $display("Decode Stage: [pc = %x, inst = %x] [op=%x, rs=%d, rt=%d, rd=%d, imm=%x, f2=%x] [reset=%d, halted=%d] [ctrl_we=%d, rs_data = %d, imm_extend = %d, rt_data = %d, forward_ex = %d, forward_mem_in = %d, forward_mem_out = %d]  ", id_pc, id_inst, dcd_op, dcd_rs, dcd_rt, dcd_rd, dcd_imm, dcd_funct2, ~rst_b, halted, ctrl_we, forwarded_rs_data, imm_extend, 
+                   forwarded_rt_data, forward_from_ex, forward_from_mem_in, forward_from_mem_out); 
       $display("Execute Stage: [alu_op1 = %d, alu_op2 = %d, alu_out = %d, alu__sel = %x, alu_src = %x, pc = %x] ", alu_input_1, alu_input_2, alu__out, ex_alu__sel, ex_alu__src, ex_pc); 
-      $display("Memory Stage: [mem_addr = %x, mem_write_data = %x, mem_read_data = %x, mem_write_en = %x, pc = %x]", mem_addr, mem_data_out, mem_data_in, mem_write_en, mem_pc); 
+      $display("Memory Stage: [mem_addr = %x, mem_write_data = %x, mem_read_data = %x, mem_write_en = %x, mem_regfile_write_addr = %d, pc = %x]", mem_addr, mem_data_out, mem_data_in, mem_write_en, mem_regfile_write_addr,mem_pc); 
       $display("Writeback Stage: [mem_to_reg = %x, reg_write_data = %d, reg_write_addr = %d, writeback_pc = %x, updated = %x]", mem_to_reg, regfile_write_data, regfile_write_addr, wb_pc, (wb_pc == pc - 4)); 
 
      end
@@ -274,8 +300,7 @@ module mips_core(/*AUTOARG*/
                          dcd_e_imm; 
 
    // Data: PC, rs_data1,  rt_data1, sign extended immediate, reg_write destination
-   assign id_out = {id_regfile_write_addr, (is_shift) ? dcd_shamt : rs_data, rt_data, imm_extend, id_in[95:64]}; 
-   // INSTRUCTION DECODE END -- pass data into IDEXReg and IDEXControlsReg 
+   
 
    // Register File
    // Instantiate the register file from reg_file.v here.
@@ -287,7 +312,7 @@ module mips_core(/*AUTOARG*/
     .rt_num(dcd_rt), 
     .rd_num(regfile_write_addr), 
     .rd_data(regfile_write_data), 
-    .rd_we(ctrl_we), 
+    .rd_we(wb_ctrl_we), 
     .clk(clk), 
     .rst_b(rst_b),
     .halted(halted), 
@@ -295,22 +320,46 @@ module mips_core(/*AUTOARG*/
     .rt_data(rt_data)
 
    ); 
+   ForwardingUnit forwarder(
+      .ex_mem_to_reg(ex_ctrl_we), 
+      .mem_mem_to_reg(mem_mem_to_reg), 
+      .id_rs_reg(dcd_rs), 
+      .id_rt_reg(dcd_rt), 
+      .ex_regfile_write_addr(ex_regfile_write_addr), 
+      .mem_regfile_write_addr(mem_regfile_write_addr), 
+      .use_ex(forward_from_ex), 
+      .use_mem_in(forward_from_mem_in), 
+      .use_mem_out(forward_from_mem_out),
+      .mem_ctrl_we(mem_ctrl_we)
+   ); 
+
+   assign forwarded_rt_data = (forward_from_ex[0]) ? alu__out : 
+                              (forward_from_mem_in[0]) ? mem_in[31:0] : 
+                              (forward_from_mem_out[0]) ? mem_data_out : rt_data; 
+
+   assign forwarded_rs_data = (forward_from_ex[1]) ? alu__out : 
+                              (forward_from_mem_in[1]) ? mem_in[31:0] : 
+                              (forward_from_mem_out[1]) ? mem_data_out : rs_data; 
+   assign id_out = {id_regfile_write_addr, (is_shift) ? dcd_shamt : forwarded_rs_data, forwarded_rt_data, imm_extend, id_in[95:64]}; 
+   // INSTRUCTION DECODE END -- pass data into IDEXReg and IDEXControlsReg 
 
 
 
    register #(256, 0) IDEXReg(ex_in, id_out, clk, ~internal_halt, rst_b); 
    register #(32, 0) IDEXControlsReg(ex_controls, id_controls, clk, ~internal_halt, rst_b); 
 
-   wire ex_is_shift, ex_alu__src, ex_mem_to_reg, ex_mem_write_en; 
-   wire [3:0] ex_alu__sel; 
-   wire [2:0] ex_mem_read_bytes, ex_mem_write_bytes; 
-   wire [4:0] ex_regfile_write_addr; 
+  
 
-   wire [31:0] ex_rs_data, ex_rt_data, ex_imm_extend, ex_pc; 
+   
+
+
+   
 
    // input controls: 
    // assign id_controls = {'0, mem_write_bytes, mem_read_bytes, mem_write_en, alu__sel, alu__src, mem_to_reg, ctrl_we, imm_sign, is_shift};
    assign ex_is_shift = ex_controls[0]; 
+   
+   assign ex_ctrl_we = ex_controls[2]; 
    assign ex_alu__sel = ex_controls[8:5]; 
    assign ex_alu__src = ex_controls[4];
    assign ex_mem_to_reg =  ex_controls[3]; 
@@ -341,20 +390,13 @@ module mips_core(/*AUTOARG*/
 
    // output from execute stage -- the memory requires write_data = rt_data, read_address, 
    assign ex_out = {'0, ex_pc, ex_regfile_write_addr, alu_flags, rt_data, alu__out}; 
-   assign ex_controls_out =  {'0, mem_write_bytes, mem_read_bytes, mem_write_en, mem_to_reg, ctrl_we}; 
+   assign ex_controls_out =  {'0, mem_write_bytes, mem_read_bytes, mem_write_en, mem_to_reg, ex_ctrl_we}; 
 
 
    register #(256, 0) EXMEMReg(mem_in, ex_out, clk, ~internal_halt, rst_b);   
    register #(32, 0) EXMEMControlsReg(mem_controls, ex_controls_out, clk, ~internal_halt, rst_b); 
 
    // carry over control signals 
-
-   wire mem_ctrl_we, mem_mem_to_reg, mem_write_en; 
-   wire [2:0] mem_mem_read_bytes, mem_mem_write_bytes; 
-
-   // wire [31:0] mem_addr, mem_data_in; 
-   wire [4:0] mem_regfile_write_addr; 
-   wire [31:0] mem_pc; 
 
    
 
@@ -385,8 +427,7 @@ module mips_core(/*AUTOARG*/
 
    // eventually build up to jump instructions lol
 
-   wire wb_ctrl_we, wb_mem_to_reg; 
-   wire [31:0] wb_mem_data_out, wb_alu_out, wb_regfile_write_addr; 
+   
  
 
 
@@ -463,6 +504,25 @@ module mips_core(/*AUTOARG*/
 
 endmodule // mips_core
 
+
+module ForwardingUnit(ex_mem_to_reg, mem_ctrl_we, mem_mem_to_reg, id_rs_reg, id_rt_reg, ex_regfile_write_addr, mem_regfile_write_addr, use_ex, use_mem_in, use_mem_out); 
+   input ex_mem_to_reg, mem_ctrl_we, mem_mem_to_reg; 
+   input [4:0] id_rs_reg, id_rt_reg, ex_regfile_write_addr, mem_regfile_write_addr; 
+   output [1:0] use_ex, use_mem_out, use_mem_in;
+
+
+   // If both use_ex and use_mem are high, then take the newer instruction's data (that is, ex > mem). 
+   // The pipeline will take care of that logic 
+   // outputs are {rs_match, rt_match}
+   wire use_mem; 
+   assign use_mem = {(id_rs_reg == mem_regfile_write_addr),(id_rt_reg == mem_regfile_write_addr)}; 
+
+   assign use_ex = {(ex_mem_to_reg) & (id_rs_reg == ex_regfile_write_addr), (ex_mem_to_reg) &  (id_rt_reg == ex_regfile_write_addr)}; 
+
+   assign use_mem_in = {mem_ctrl_we, mem_ctrl_we} & use_mem; 
+   assign use_mem_out = mem_mem_to_reg & use_mem; 
+
+endmodule
 
 ////
 //// mips_ALU: Performs all arithmetic and logical operations
